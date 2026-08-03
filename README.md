@@ -2,8 +2,7 @@
 
 Hand a draft an agent wrote to a human, get the edited version back.
 
-An agent that drafts a Slack message prints it into the transcript and asks
-whether it looks right. The human then retypes their edits as a comment.
+It's annoying to go back and forth with agents when drafting content.
 `agent-to-nvim` opens the draft in nvim in a tmux window instead, blocks until the
 edit finishes, and prints the resulting text on stdout — so the agent continues
 from what the human actually wants to send.
@@ -38,6 +37,7 @@ than piping text in.
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `-deadline` | `8m` | How long to wait before handing back a collect id. `0` waits forever. |
+| `-diff` | `true` | Report what changed on stderr. |
 | `-focus` | `true` | Open the edit window in the foreground and restore the previous window afterward. |
 
 `AGENT_TO_NVIM_EDITOR` overrides nvim. `XDG_STATE_HOME` moves the state directory
@@ -56,11 +56,35 @@ any output.
 | 30 | Deadline passed and the draft is still open. The resume command is on stderr. |
 | 1 | Could not run the edit. |
 
-Changed and unchanged are told apart by comparing content hashes, not modification
-times — writing in nvim touches mtime even when nothing changed.
+Changed and unchanged are told apart by comparing content, not modification times
+— writing in nvim touches mtime even when nothing changed.
 
-Only the draft text ever goes to stdout. Status lines and the resume command go to
-stderr, so a caller can use stdout directly.
+Only the draft text ever goes to stdout. Status lines, the change report, and the
+resume command go to stderr, so a caller can use stdout directly.
+
+## What changed
+
+An agent handed an edited draft would otherwise have to work out the change by
+comparing the result against whatever it remembers writing. That fails for a file
+it never read and for a `collect` that runs in a later process, so the change is
+reported on stderr instead:
+
+```
+$ agent-to-nvim announcement.md
+agent-to-nvim: draft edited
+@@ line 3 @@
+~ Launch is on [-Wednesday,-]{+Thursday,+} please read the runbook first.
++ Ping me if that clashes with anything.
+```
+
+`~` is a replaced line with `[-removed-]` and `{+added+}` words marked, `-` and `+`
+are lines removed or added outright, and a two-space prefix is unchanged text shown
+to place the change. Marking words rather than lines keeps a one-word edit from
+reading as a rewritten paragraph, which is what pushes an agent back to guessing.
+
+The draft as handed over is kept in the state directory beside the session record,
+so `collect` reports the same change the blocking run would have. Both are dropped
+once the edit resolves.
 
 ## Long edits
 

@@ -88,6 +88,38 @@ On 0 or 10, the edited text is on stdout. Use exactly that text. Do not merge it
 with the original draft or re-apply wording that was edited out — an edit that
 removed something meant to remove it.
 
+## Read what changed
+
+On exit 0, stderr carries the change itself, so there is no need to work it out by
+comparing the result against the draft from memory:
+
+```
+agent-to-nvim: draft edited
+@@ line 3 @@
+~ Launch is on [-Wednesday,-]{+Thursday,+} please read the runbook first.
++ Ping me if that clashes with anything.
+```
+
+| Marker | Meaning |
+| --- | --- |
+| `~` | Replaced. `[-this-]` came out, `{+this+}` went in. |
+| `-` | Removed outright. |
+| `+` | Added outright. |
+| two spaces | Unchanged, shown to place the change. |
+
+This is the authority on what the user did — trust it over any recollection of the
+draft. Two things it settles:
+
+- **Anything inside `[- -]` is gone on purpose.** Do not restore it, and do not
+  reword it back in on the grounds that it read better.
+- **A `~` line changed only the marked words.** The rest of that line was left
+  alone, so do not treat the whole line as rewritten.
+
+Worth saying out loud to the user when the edit was substantive: name what they
+changed rather than replaying the whole text back at them. Pass `-diff=false` to
+suppress the report, which is only worth doing when the draft is large and the
+change does not matter to what happens next.
+
 ## Requirements
 
 The command needs tmux (it opens a real tmux window, not a popup, so the edit

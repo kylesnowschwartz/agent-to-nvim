@@ -22,6 +22,7 @@ import (
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/editwindow"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/pending"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/textdiff"
 )
 
 // Exit codes are the agent-facing API: they are how the caller decides what to
@@ -38,24 +39,26 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
+// settings are the run's choices, gathered so they can be carried down to the
+// wait without growing a parameter list at every step.
+type settings struct {
+	focus    bool
+	deadline time.Duration
+	diff     bool
+}
+
 func run(args []string) int {
 	flags := flag.NewFlagSet("agent-to-nvim", flag.ContinueOnError)
 	flags.Usage = usage
 	focus := flags.Bool("focus", true, "open the edit window in the foreground")
 	deadline := flags.Duration("deadline", 8*time.Minute,
 		"how long to wait before handing back a collect id; 0 waits indefinitely")
+	diff := flags.Bool("diff", true, "report what changed on stderr")
 
-	if len(args) > 0 && args[0] == "collect" {
-		if err := flags.Parse(args[1:]); err != nil {
-			return exitFailed
-		}
-		if flags.NArg() != 1 {
-			usage()
-			return exitFailed
-		}
-		return report(collect(flags.Arg(0), *deadline))
+	collecting := len(args) > 0 && args[0] == "collect"
+	if collecting {
+		args = args[1:]
 	}
-
 	if err := flags.Parse(args); err != nil {
 		return exitFailed
 	}
@@ -63,7 +66,12 @@ func run(args []string) int {
 		usage()
 		return exitFailed
 	}
-	return report(hand(flags.Arg(0), *focus, *deadline))
+
+	set := settings{focus: *focus, deadline: *deadline, diff: *diff}
+	if collecting {
+		return report(collect(flags.Arg(0), set))
+	}
+	return report(hand(flags.Arg(0), set))
 }
 
 func report(code int, err error) int {
@@ -75,7 +83,7 @@ func report(code int, err error) int {
 }
 
 // hand opens the draft for editing and waits for the outcome.
-func hand(path string, focus bool, deadline time.Duration) (int, error) {
+func hand(path string, set settings) (int, error) {
 	handed, err := draft.Open(path)
 	if err != nil {
 		return 0, err
@@ -100,7 +108,7 @@ func hand(path string, focus bool, deadline time.Duration) (int, error) {
 		StartDir:     workDir,
 		Name:         "edit: " + filepath.Base(handed.Path()),
 		ExitCodeFile: edit.Window.ExitCodeFile,
-		Focus:        focus,
+		Focus:        set.focus,
 	})
 	if err != nil {
 		store.Forget(edit.ID)
@@ -114,11 +122,11 @@ func hand(path string, focus bool, deadline time.Duration) (int, error) {
 		return 0, err
 	}
 
-	return settle(store, edit, handed, session, deadline)
+	return settle(store, edit, handed, session, set)
 }
 
 // collect resumes waiting on an edit a previous run handed back.
-func collect(id string, deadline time.Duration) (int, error) {
+func collect(id string, set settings) (int, error) {
 	store, err := pending.OpenStore()
 	if err != nil {
 		return 0, err
@@ -132,7 +140,7 @@ func collect(id string, deadline time.Duration) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return settle(store, edit, draft.Reopen(edit.DraftPath, original), session, deadline)
+	return settle(store, edit, draft.Reopen(edit.DraftPath, original), session, set)
 }
 
 // settle waits for the edit to finish and turns the result into an exit code.
@@ -141,11 +149,11 @@ func settle(
 	edit pending.Edit,
 	handed *draft.Draft,
 	session *editwindow.Session,
-	deadline time.Duration,
+	set settings,
 ) (int, error) {
 	ctx := context.Background()
-	if deadline > 0 {
-		timed, cancel := context.WithTimeout(ctx, deadline)
+	if set.deadline > 0 {
+		timed, cancel := context.WithTimeout(ctx, set.deadline)
 		defer cancel()
 		ctx = timed
 	}
@@ -155,7 +163,7 @@ func settle(
 	case errors.Is(err, editwindow.ErrDeadline):
 		fmt.Fprintf(os.Stderr,
 			"agent-to-nvim: still being edited after %s; the draft is safe — wait for it with: agent-to-nvim collect %s\n",
-			deadline, edit.ID)
+			set.deadline, edit.ID)
 		return exitStillOpen, nil
 	case errors.Is(err, editwindow.ErrWindowClosed):
 		store.Forget(edit.ID)
@@ -182,6 +190,9 @@ func settle(
 		return exitUnchanged, nil
 	}
 	fmt.Fprintln(os.Stderr, "agent-to-nvim: draft edited")
+	if set.diff {
+		fmt.Fprint(os.Stderr, textdiff.Unified(string(handed.Original()), text))
+	}
 	return exitEdited, nil
 }
 
@@ -195,6 +206,15 @@ Opens <file> in nvim in a new tmux window, blocks until the edit finishes, and
 prints the resulting text on stdout. If the deadline passes first, nvim keeps
 running and the printed id resumes the same edit.
 
+What the human changed is reported on stderr, marked word by word:
+
+  @@ line 4 @@
+    Hand a draft an agent wrote to a human, get the edited version back.
+  ~ Launch is on [-Wednesday-]{+Thursday+}, please read the runbook.
+  + Ping me if that clashes with anything.
+
+  ~ replaced, marked [-removed-]{+added+}    - removed    + added    (blank) unchanged
+
 exit codes:
   0   saved with changes
   10  saved unchanged (approved as-is)
@@ -204,6 +224,7 @@ exit codes:
 
 flags:
   -deadline=8m   how long to wait before handing back a collect id (0 waits forever)
+  -diff=false    do not report what changed
   -focus=false   open the edit window in the background
 
 `)
