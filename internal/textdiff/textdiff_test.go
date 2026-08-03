@@ -27,6 +27,22 @@ func TestUnifiedMarksOnlyTheWordsThatMoved(t *testing.T) {
 	}
 }
 
+// A word and the space beside it are separate tokens, so an inserted phrase must
+// still come back as one pair of markers rather than one per token.
+func TestUnifiedJoinsNeighbouringMarkers(t *testing.T) {
+	got := Unified(
+		"Unit tests cannot verify this.\n",
+		"Unit tests cannot really ever verify this.\n",
+	)
+
+	if !strings.Contains(got, "{+really ever +}") {
+		t.Errorf("Unified() = %q, want the insertion in one pair of markers", got)
+	}
+	if strings.Contains(got, "+}{+") {
+		t.Errorf("Unified() = %q, want adjacent markers joined", got)
+	}
+}
+
 func TestUnifiedReportsAPureInsertion(t *testing.T) {
 	got := Unified("hey team\n", "hey team\nand one more thing\n")
 

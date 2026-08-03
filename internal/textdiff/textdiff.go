@@ -268,20 +268,35 @@ func prefixEach(prefix string, lines []string) []string {
 
 // marked renders a replaced block with the words that actually moved wrapped in
 // [-removed-] and {+added+}.
+//
+// Neighbouring tokens of the same kind are joined into one pair of markers. A
+// word and the space after it are separate tokens, so wrapping each on its own
+// turns a two-word insertion into four sets of brackets.
 func marked(gone, fresh []string) []string {
 	was := tokenize(strings.Join(gone, "\n"))
 	now := tokenize(strings.Join(fresh, "\n"))
 
 	var out strings.Builder
-	for _, r := range alignMiddle(was, now, 0) {
-		switch r.kind {
-		case equal:
-			out.WriteString(r.text)
-		case removed:
-			out.WriteString("[-" + r.text + "-]")
-		case added:
-			out.WriteString("{+" + r.text + "+}")
+	rows := alignMiddle(was, now, 0)
+	for at := 0; at < len(rows); {
+		run := at
+		for run < len(rows) && rows[run].kind == rows[at].kind {
+			run++
 		}
+
+		var text strings.Builder
+		for _, r := range rows[at:run] {
+			text.WriteString(r.text)
+		}
+		switch rows[at].kind {
+		case equal:
+			out.WriteString(text.String())
+		case removed:
+			out.WriteString("[-" + text.String() + "-]")
+		case added:
+			out.WriteString("{+" + text.String() + "+}")
+		}
+		at = run
 	}
 	return strings.Split(out.String(), "\n")
 }
