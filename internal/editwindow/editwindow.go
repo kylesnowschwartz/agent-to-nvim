@@ -3,6 +3,8 @@
 //
 // A tmux window is server-owned, so the edit survives a client disconnect: a
 // dropped SSH connection leaves nvim running, and reattaching brings it back.
+// Waiting is separable from starting — a caller that gives up can hand its
+// Handle to a later process, which reattaches and keeps waiting.
 package editwindow
 
 import (
@@ -20,7 +22,7 @@ import (
 var ErrWindowClosed = errors.New("edit window closed before the draft was saved")
 
 // ErrDeadline reports that the wait was given up on while nvim is still running.
-// The window stays open and the session stays resumable.
+// The window stays open and the Handle stays valid for a later Reattach.
 var ErrDeadline = errors.New("deadline reached while the draft was still open")
 
 const pollInterval = 250 * time.Millisecond
@@ -33,63 +35,85 @@ type Request struct {
 	StartDir string
 	// Name is the tmux window name.
 	Name string
+	// ExitCodeFile is where nvim's exit code gets recorded. It must not exist
+	// yet: its appearance is what signals the edit finished. The caller owns the
+	// path so it can outlive this process and be picked up by a Reattach.
+	ExitCodeFile string
 	// Focus opens the window in the foreground and restores the previously
 	// active window once the edit finishes.
 	Focus bool
 }
 
+// Handle identifies a running edit window well enough for a different process to
+// wait on it. Every field is a plain value so a caller can persist it.
+type Handle struct {
+	WindowID       string `json:"window_id"`
+	ExitCodeFile   string `json:"exit_code_file"`
+	ReturnToWindow string `json:"return_to_window,omitempty"`
+}
+
 // Session is a running edit window.
 type Session struct {
-	windowID    string
-	sentinel    string
-	returnToWin string
+	handle Handle
 }
 
 // Start opens the edit window and returns without waiting for the edit.
 func Start(req Request) (*Session, error) {
-	if os.Getenv("TMUX") == "" {
-		return nil, errors.New("no tmux session: agent-to-nvim opens the draft in a tmux window, so it must run inside tmux")
+	if req.ExitCodeFile == "" {
+		return nil, errors.New("no exit-code file given for the edit window")
 	}
-	if _, err := exec.LookPath("tmux"); err != nil {
-		return nil, fmt.Errorf("tmux not found on PATH: %w", err)
+	if err := requireTmux(); err != nil {
+		return nil, err
 	}
 	editor, err := exec.LookPath(editorName())
 	if err != nil {
 		return nil, fmt.Errorf("%s not found on PATH: %w", editorName(), err)
 	}
 
-	sentinel, err := reserveSentinelPath()
-	if err != nil {
-		return nil, err
-	}
-
-	session := &Session{sentinel: sentinel}
+	handle := Handle{ExitCodeFile: req.ExitCodeFile}
 	if req.Focus {
 		// Best effort: without the previous window id the edit window simply
 		// stays focused after the edit, which is not worth failing the run over.
-		session.returnToWin, _ = tmuxOutput("display-message", "-p", "#{window_id}")
+		handle.ReturnToWindow, _ = tmuxOutput("display-message", "-p", "#{window_id}")
 	}
 
 	windowID, err := tmuxOutput(
 		"new-window", "-d", "-P", "-F", "#{window_id}",
 		"-c", req.StartDir, "-n", req.Name,
-		"--", "sh", "-c", recordExitCode(editor, req.Path, sentinel),
+		"--", "sh", "-c", recordExitCode(editor, req.Path, req.ExitCodeFile),
 	)
 	if err != nil {
-		os.Remove(sentinel)
 		return nil, fmt.Errorf("open tmux edit window: %w", err)
 	}
-	session.windowID = windowID
+	handle.WindowID = windowID
 
 	if req.Focus {
 		_, _ = tmuxOutput("select-window", "-t", windowID)
 	}
-	return session, nil
+	return &Session{handle: handle}, nil
 }
+
+// Reattach returns a Session for an edit window started by an earlier process.
+func Reattach(handle Handle) (*Session, error) {
+	if handle.WindowID == "" || handle.ExitCodeFile == "" {
+		return nil, errors.New("incomplete edit-window handle")
+	}
+	if err := requireTmux(); err != nil {
+		return nil, err
+	}
+	return &Session{handle: handle}, nil
+}
+
+// Handle returns what a later process needs to wait on this edit window.
+func (s *Session) Handle() Handle { return s.handle }
 
 // Wait blocks until nvim exits and returns its exit code. It returns
 // ErrWindowClosed if the window disappears first and ErrDeadline if ctx ends
 // while nvim is still running.
+//
+// Only the two returning-an-exit-code paths clean up. ErrDeadline deliberately
+// leaves the exit-code file in place: nvim is still going to write it, and a
+// later Reattach is what reads it.
 func (s *Session) Wait(ctx context.Context) (int, error) {
 	for {
 		if code, ok := s.recordedExitCode(); ok {
@@ -97,8 +121,8 @@ func (s *Session) Wait(ctx context.Context) (int, error) {
 			return code, nil
 		}
 		if !s.windowExists() {
-			// The window can close in the same instant nvim writes the
-			// sentinel, so read once more before calling this a kill.
+			// The window can close in the same instant nvim writes the exit
+			// code, so read once more before calling this a kill.
 			if code, ok := s.recordedExitCode(); ok {
 				s.finish()
 				return code, nil
@@ -116,18 +140,18 @@ func (s *Session) Wait(ctx context.Context) (int, error) {
 }
 
 // recordExitCode builds the shell command the window runs: nvim on the draft,
-// then its exit code written to the sentinel. The write is a temp-file rename so
-// the waiting process never reads a half-written code.
-func recordExitCode(editor, path, sentinel string) string {
+// then its exit code written to the exit-code file. The write is a temp-file
+// rename so the waiting process never reads a half-written code.
+func recordExitCode(editor, path, exitCodeFile string) string {
 	return fmt.Sprintf(
 		`%s %s; rc=$?; printf '%%s' "$rc" > %s.tmp && mv -f %s.tmp %s`,
 		shellQuote(editor), shellQuote(path),
-		shellQuote(sentinel), shellQuote(sentinel), shellQuote(sentinel),
+		shellQuote(exitCodeFile), shellQuote(exitCodeFile), shellQuote(exitCodeFile),
 	)
 }
 
 func (s *Session) recordedExitCode() (int, bool) {
-	recorded, err := os.ReadFile(s.sentinel)
+	recorded, err := os.ReadFile(s.handle.ExitCodeFile)
 	if err != nil {
 		return 0, false
 	}
@@ -144,7 +168,7 @@ func (s *Session) windowExists() bool {
 		return false
 	}
 	for _, id := range strings.Split(windows, "\n") {
-		if strings.TrimSpace(id) == s.windowID {
+		if strings.TrimSpace(id) == s.handle.WindowID {
 			return true
 		}
 	}
@@ -152,28 +176,21 @@ func (s *Session) windowExists() bool {
 }
 
 func (s *Session) finish() {
-	if s.returnToWin != "" {
-		_, _ = tmuxOutput("select-window", "-t", s.returnToWin)
+	if s.handle.ReturnToWindow != "" {
+		_, _ = tmuxOutput("select-window", "-t", s.handle.ReturnToWindow)
 	}
-	os.Remove(s.sentinel)
-	os.Remove(s.sentinel + ".tmp")
+	_ = os.Remove(s.handle.ExitCodeFile)
+	_ = os.Remove(s.handle.ExitCodeFile + ".tmp")
 }
 
-// reserveSentinelPath returns a free path for the exit-code file. The file is
-// removed so its existence is what signals the edit finished.
-func reserveSentinelPath() (string, error) {
-	file, err := os.CreateTemp("", "agent-to-nvim-done-*")
-	if err != nil {
-		return "", fmt.Errorf("reserve exit-code file: %w", err)
+func requireTmux() error {
+	if os.Getenv("TMUX") == "" {
+		return errors.New("no tmux session: agent-to-nvim opens the draft in a tmux window, so it must run inside tmux")
 	}
-	path := file.Name()
-	if err := file.Close(); err != nil {
-		return "", fmt.Errorf("reserve exit-code file: %w", err)
+	if _, err := exec.LookPath("tmux"); err != nil {
+		return fmt.Errorf("tmux not found on PATH: %w", err)
 	}
-	if err := os.Remove(path); err != nil {
-		return "", fmt.Errorf("reserve exit-code file: %w", err)
-	}
-	return path, nil
+	return nil
 }
 
 func editorName() string {

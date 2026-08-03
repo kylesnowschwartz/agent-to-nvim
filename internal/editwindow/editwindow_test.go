@@ -2,6 +2,7 @@ package editwindow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -40,15 +41,33 @@ func TestRecordExitCodeQuotesEveryPath(t *testing.T) {
 
 func TestStartWithoutTmuxFails(t *testing.T) {
 	t.Setenv("TMUX", "")
-	if _, err := Start(Request{Path: "/tmp/draft.md"}); err == nil {
+	request := Request{Path: "/tmp/draft.md", ExitCodeFile: "/tmp/done-1"}
+	if _, err := Start(request); err == nil {
 		t.Fatal("expected an error when not running inside tmux")
+	}
+}
+
+func TestStartWithoutExitCodeFileFails(t *testing.T) {
+	if _, err := Start(Request{Path: "/tmp/draft.md"}); err == nil {
+		t.Fatal("expected an error when no exit-code file is given")
+	}
+}
+
+func TestReattachRejectsIncompleteHandle(t *testing.T) {
+	for name, handle := range map[string]Handle{
+		"no window":         {ExitCodeFile: "/tmp/done-1"},
+		"no exit-code file": {WindowID: "@1"},
+	} {
+		if _, err := Reattach(handle); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
 	}
 }
 
 func TestWaitReturnsEditorExitCodeOnSave(t *testing.T) {
 	path, session := startEdit(t)
-	sendKeys(t, session.windowID, "ggA", " (edited)", "Escape")
-	sendKeys(t, session.windowID, ":wq", "Enter")
+	sendKeys(t, session.handle.WindowID, "ggA", " (edited)", "Escape")
+	sendKeys(t, session.handle.WindowID, ":wq", "Enter")
 
 	code, err := session.Wait(waitContext(t))
 	if err != nil {
@@ -69,7 +88,7 @@ func TestWaitReturnsEditorExitCodeOnSave(t *testing.T) {
 
 func TestWaitReportsDiscardAsNonZeroExitCode(t *testing.T) {
 	_, session := startEdit(t)
-	sendKeys(t, session.windowID, ":cq", "Enter")
+	sendKeys(t, session.handle.WindowID, ":cq", "Enter")
 
 	code, err := session.Wait(waitContext(t))
 	if err != nil {
@@ -82,7 +101,7 @@ func TestWaitReportsDiscardAsNonZeroExitCode(t *testing.T) {
 
 func TestWaitReportsKilledWindow(t *testing.T) {
 	_, session := startEdit(t)
-	if err := exec.Command("tmux", "kill-window", "-t", session.windowID).Run(); err != nil {
+	if err := exec.Command("tmux", "kill-window", "-t", session.handle.WindowID).Run(); err != nil {
 		t.Fatalf("kill window: %v", err)
 	}
 
@@ -93,12 +112,58 @@ func TestWaitReportsKilledWindow(t *testing.T) {
 
 func TestWaitReportsDeadlineWhileEditorRuns(t *testing.T) {
 	_, session := startEdit(t)
-	t.Cleanup(func() { _ = exec.Command("tmux", "kill-window", "-t", session.windowID).Run() })
+	t.Cleanup(func() { _ = exec.Command("tmux", "kill-window", "-t", session.handle.WindowID).Run() })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	if _, err := session.Wait(ctx); !errors.Is(err, ErrDeadline) {
 		t.Errorf("Wait error = %v, want ErrDeadline", err)
+	}
+}
+
+// A caller that gives up must leave the edit collectable: the exit-code file has
+// to survive the abandoned wait, and a Handle carried through JSON — the shape a
+// later process reads it back in — has to be enough to finish the edit.
+func TestReattachFinishesAnAbandonedWait(t *testing.T) {
+	path, session := startEdit(t)
+
+	givenUp, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if _, err := session.Wait(givenUp); !errors.Is(err, ErrDeadline) {
+		t.Fatalf("first Wait error = %v, want ErrDeadline", err)
+	}
+
+	carried, err := json.Marshal(session.Handle())
+	if err != nil {
+		t.Fatalf("encode handle: %v", err)
+	}
+	var handle Handle
+	if err := json.Unmarshal(carried, &handle); err != nil {
+		t.Fatalf("decode handle: %v", err)
+	}
+
+	resumed, err := Reattach(handle)
+	if err != nil {
+		t.Fatalf("Reattach: %v", err)
+	}
+
+	sendKeys(t, handle.WindowID, "ggA", " (edited later)", "Escape")
+	sendKeys(t, handle.WindowID, ":wq", "Enter")
+
+	code, err := resumed.Wait(waitContext(t))
+	if err != nil {
+		t.Fatalf("resumed Wait: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0 for a saved draft", code)
+	}
+
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read draft: %v", err)
+	}
+	if want := "hey team (edited later)\n"; string(saved) != want {
+		t.Errorf("draft = %q, want %q", saved, want)
 	}
 }
 
@@ -117,19 +182,24 @@ func startEdit(t *testing.T) (path string, session *Session) {
 		t.Fatalf("write draft: %v", err)
 	}
 
-	session, err := Start(Request{Path: path, StartDir: dir, Name: "a2n-test"})
+	session, err := Start(Request{
+		Path:         path,
+		StartDir:     dir,
+		Name:         "a2n-test",
+		ExitCodeFile: filepath.Join(dir, "exit-code"),
+	})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		screen, _ := tmuxOutput("capture-pane", "-p", "-t", session.windowID)
+		screen, _ := tmuxOutput("capture-pane", "-p", "-t", session.handle.WindowID)
 		if strings.Contains(screen, "hey team") {
 			return path, session
 		}
 		if time.Now().After(deadline) {
-			_ = exec.Command("tmux", "kill-window", "-t", session.windowID).Run()
+			_ = exec.Command("tmux", "kill-window", "-t", session.handle.WindowID).Run()
 			t.Fatalf("nvim did not draw the draft in the edit window (screen: %q)", screen)
 		}
 		time.Sleep(100 * time.Millisecond)

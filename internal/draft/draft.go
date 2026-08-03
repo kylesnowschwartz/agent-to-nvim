@@ -41,8 +41,18 @@ func Open(path string) (*Draft, error) {
 	return &Draft{path: abs, fingerprint: fingerprint(text)}, nil
 }
 
+// Reopen rebuilds a Draft from a path and a fingerprint recorded by an earlier
+// process, so an edit handed over in one run can be judged edited-or-not in the
+// next one.
+func Reopen(path, fingerprint string) *Draft {
+	return &Draft{path: path, fingerprint: fingerprint}
+}
+
 // Path is the absolute path handed to the editor.
 func (d *Draft) Path() string { return d.path }
+
+// Fingerprint is the content hash recorded when the draft was handed over.
+func (d *Draft) Fingerprint() string { return d.fingerprint }
 
 // Reread returns the file's current text and whether it differs from the text
 // recorded at Open. Content is compared rather than modification time because
