@@ -27,13 +27,19 @@ back.
 - **Anything else** — read it as which draft is meant ("the slack message", "the
   PR description"), then hand that one over.
 
-For a draft that is not already a file, write it to `$TMPDIR` with a `.md`
-extension and a name that says what it is, so nvim highlights it and the tmux
-window is recognizable:
+For a draft that is not already a file, put it in a fresh temp directory under a
+name that says what it is — the name shows in the tmux window title and gives nvim
+its filetype:
 
 ```
-$TMPDIR/slack-launch-announcement.md
+mktemp -d
+# → /var/folders/…/tmp.AbC123, so write to
+#   /var/folders/…/tmp.AbC123/slack-launch-announcement.md
 ```
+
+Use a **new** directory every time. Reusing a fixed path leaves a stale draft from
+an earlier handover sitting there, and reading it back later mixes an old version
+into the current one.
 
 Write the file with the Write tool. Do not try to pipe multiline text into the
 command.
