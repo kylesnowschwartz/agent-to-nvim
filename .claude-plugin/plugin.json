@@ -1,0 +1,11 @@
+{
+  "name": "agent-to-nvim",
+  "version": "0.1.0",
+  "description": "Hand a draft to a human in nvim and wait for the edited version before continuing",
+  "author": {
+    "name": "Kyle Snow Schwartz",
+    "url": "https://github.com/kylesnowschwartz"
+  },
+  "repository": "https://github.com/kylesnowschwartz/agent-to-nvim",
+  "keywords": ["nvim", "tmux", "drafting", "human-in-the-loop"]
+}
