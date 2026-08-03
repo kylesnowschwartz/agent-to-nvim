@@ -1,10 +1,14 @@
 // Package pending remembers an edit that is still open, so a caller who stops
 // waiting can hand the edit to a later process instead of losing it.
 //
-// A record and the exit-code file it points at live side by side in one
-// directory, so they are created and cleaned up together. Splitting them across
-// a state directory and a temp directory would let one outlive the other, and a
-// resumed wait would watch a path nobody writes.
+// A record, the exit-code file it points at, and a copy of the draft as handed
+// over all live side by side in one directory, so they are created and cleaned up
+// together. Splitting them across a state directory and a temp directory would
+// let one outlive the other, and a resumed wait would watch a path nobody writes.
+//
+// The copy of the draft is a file rather than a field in the record because it
+// round-trips arbitrary bytes; JSON would rewrite anything that is not valid
+// UTF-8 and the resumed run would report changes the human never made.
 package pending
 
 import (
@@ -29,14 +33,13 @@ var ErrUnknownEdit = errors.New("no open edit under that id")
 // the state directory forever.
 const forgetAfter = 7 * 24 * time.Hour
 
-// Edit is an open edit: the draft handed over, the fingerprint to judge it
-// against, and the window to keep waiting on.
+// Edit is an open edit: the draft handed over and the window to keep waiting on.
+// The draft's original text is stored alongside rather than in here — see Find.
 type Edit struct {
-	ID          string            `json:"id"`
-	DraftPath   string            `json:"draft_path"`
-	Fingerprint string            `json:"fingerprint"`
-	Window      editwindow.Handle `json:"window"`
-	StartedAt   time.Time         `json:"started_at"`
+	ID        string            `json:"id"`
+	DraftPath string            `json:"draft_path"`
+	Window    editwindow.Handle `json:"window"`
+	StartedAt time.Time         `json:"started_at"`
 }
 
 // Store is the directory of open edits.
@@ -65,34 +68,34 @@ func OpenStore() (*Store, error) {
 // Begin allocates an id and an exit-code path for a draft about to be handed
 // over. The exit-code file is not created: its appearance is what signals the
 // edit finished.
-func (s *Store) Begin(draftPath, fingerprint string) (Edit, error) {
+func (s *Store) Begin(draftPath string) (Edit, error) {
 	id, err := newID()
 	if err != nil {
 		return Edit{}, err
 	}
 	return Edit{
-		ID:          id,
-		DraftPath:   draftPath,
-		Fingerprint: fingerprint,
-		Window:      editwindow.Handle{ExitCodeFile: filepath.Join(s.dir, id+".rc")},
-		StartedAt:   time.Now(),
+		ID:        id,
+		DraftPath: draftPath,
+		Window:    editwindow.Handle{ExitCodeFile: filepath.Join(s.dir, id+".rc")},
+		StartedAt: time.Now(),
 	}, nil
 }
 
-// Remember writes the edit so a later process can find it, and drops records old
-// enough that nobody is coming back for them.
-func (s *Store) Remember(edit Edit) error {
+// Remember writes the edit and the draft as handed over so a later process can
+// find both, and drops records old enough that nobody is coming back for them.
+//
+// The original is written first: once the record exists, whoever reads it is
+// entitled to assume the original is there too.
+func (s *Store) Remember(edit Edit, original []byte) error {
+	if err := writeFileAtomic(s.originalPath(edit.ID), original); err != nil {
+		return fmt.Errorf("record handed-over draft: %w", err)
+	}
+
 	recorded, err := json.MarshalIndent(edit, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode open edit: %w", err)
 	}
-
-	path := s.recordPath(edit.ID)
-	temp := path + ".tmp"
-	if err := os.WriteFile(temp, recorded, 0o600); err != nil {
-		return fmt.Errorf("record open edit: %w", err)
-	}
-	if err := os.Rename(temp, path); err != nil {
+	if err := writeFileAtomic(s.recordPath(edit.ID), recorded); err != nil {
 		return fmt.Errorf("record open edit: %w", err)
 	}
 
@@ -100,39 +103,50 @@ func (s *Store) Remember(edit Edit) error {
 	return nil
 }
 
-// Find returns the open edit recorded under id.
-func (s *Store) Find(id string) (Edit, error) {
+// Find returns the open edit recorded under id along with the draft as it was
+// handed over, which is what the edited version gets compared against.
+func (s *Store) Find(id string) (Edit, []byte, error) {
 	if err := validateID(id); err != nil {
-		return Edit{}, err
+		return Edit{}, nil, err
 	}
 
 	recorded, err := os.ReadFile(s.recordPath(id))
 	if errors.Is(err, os.ErrNotExist) {
-		return Edit{}, fmt.Errorf("%w: %s", ErrUnknownEdit, id)
+		return Edit{}, nil, fmt.Errorf("%w: %s", ErrUnknownEdit, id)
 	}
 	if err != nil {
-		return Edit{}, fmt.Errorf("read open edit: %w", err)
+		return Edit{}, nil, fmt.Errorf("read open edit: %w", err)
 	}
 
 	var edit Edit
 	if err := json.Unmarshal(recorded, &edit); err != nil {
-		return Edit{}, fmt.Errorf("decode open edit %s: %w", id, err)
+		return Edit{}, nil, fmt.Errorf("decode open edit %s: %w", id, err)
 	}
-	return edit, nil
+
+	original, err := os.ReadFile(s.originalPath(id))
+	if err != nil {
+		return Edit{}, nil, fmt.Errorf("read handed-over draft for %s: %w", id, err)
+	}
+	return edit, original, nil
 }
 
-// Forget drops the record and its exit-code file once the edit is resolved.
+// Forget drops the record and the files beside it once the edit is resolved.
 func (s *Store) Forget(id string) {
 	if validateID(id) != nil {
 		return
 	}
-	_ = os.Remove(s.recordPath(id))
-	_ = os.Remove(filepath.Join(s.dir, id+".rc"))
-	_ = os.Remove(filepath.Join(s.dir, id+".rc.tmp"))
+	for _, name := range []string{id + ".json", id + ".orig", id + ".rc"} {
+		_ = os.Remove(filepath.Join(s.dir, name))
+		_ = os.Remove(filepath.Join(s.dir, name+".tmp"))
+	}
 }
 
 func (s *Store) recordPath(id string) string {
 	return filepath.Join(s.dir, id+".json")
+}
+
+func (s *Store) originalPath(id string) string {
+	return filepath.Join(s.dir, id+".orig")
 }
 
 func (s *Store) forgetStale() {
@@ -150,6 +164,20 @@ func (s *Store) forgetStale() {
 		}
 		s.Forget(strings.TrimSuffix(entry.Name(), ".json"))
 	}
+}
+
+// writeFileAtomic lands the whole file in one rename, so a resuming process
+// never reads a record or a draft copy that is still being written.
+func writeFileAtomic(path string, content []byte) error {
+	temp := path + ".tmp"
+	if err := os.WriteFile(temp, content, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(temp, path); err != nil {
+		_ = os.Remove(temp)
+		return err
+	}
+	return nil
 }
 
 func newID() (string, error) {

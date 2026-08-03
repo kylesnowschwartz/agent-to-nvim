@@ -1,6 +1,7 @@
 package pending
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 func TestBeginPlacesExitCodeFileBesideTheRecord(t *testing.T) {
 	store, dir := openTestStore(t)
 
-	edit, err := store.Begin("/tmp/draft.md", "abc123")
+	edit, err := store.Begin("/tmp/draft.md")
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
@@ -32,7 +33,7 @@ func TestBeginAllocatesDistinctIDs(t *testing.T) {
 
 	seen := map[string]bool{}
 	for range 20 {
-		edit, err := store.Begin("/tmp/draft.md", "abc123")
+		edit, err := store.Begin("/tmp/draft.md")
 		if err != nil {
 			t.Fatalf("Begin: %v", err)
 		}
@@ -46,32 +47,63 @@ func TestBeginAllocatesDistinctIDs(t *testing.T) {
 func TestRememberAndFindRoundTrip(t *testing.T) {
 	store, _ := openTestStore(t)
 
-	edit, err := store.Begin("/tmp/draft.md", "abc123")
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
-	edit.Window.WindowID = "@42"
-	edit.Window.ReturnToWindow = "@7"
-	if err := store.Remember(edit); err != nil {
-		t.Fatalf("Remember: %v", err)
-	}
+	edit := remember(t, store, "/tmp/draft.md", "hey team\n")
 
-	found, err := store.Find(edit.ID)
+	found, original, err := store.Find(edit.ID)
 	if err != nil {
 		t.Fatalf("Find: %v", err)
 	}
-	if found.DraftPath != edit.DraftPath || found.Fingerprint != edit.Fingerprint {
+	if found.DraftPath != edit.DraftPath {
 		t.Errorf("draft = %+v, want %+v", found, edit)
 	}
 	if found.Window != edit.Window {
 		t.Errorf("window = %+v, want %+v", found.Window, edit.Window)
+	}
+	if string(original) != "hey team\n" {
+		t.Errorf("original = %q, want the text handed over", original)
+	}
+}
+
+// The draft copy is a file rather than a record field so that bytes JSON would
+// rewrite survive: a mangled original reads as an edit the human never made.
+func TestFindReturnsBytesJSONWouldRewrite(t *testing.T) {
+	store, _ := openTestStore(t)
+
+	handedOver := []byte{'h', 'i', ' ', 0xff, 0xfe, '\n'}
+	edit, err := store.Begin("/tmp/draft.md")
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	if err := store.Remember(edit, handedOver); err != nil {
+		t.Fatalf("Remember: %v", err)
+	}
+
+	_, original, err := store.Find(edit.ID)
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if !bytes.Equal(original, handedOver) {
+		t.Errorf("original = %v, want the exact bytes %v", original, handedOver)
+	}
+}
+
+func TestFindReportsAMissingDraftCopy(t *testing.T) {
+	store, dir := openTestStore(t)
+
+	edit := remember(t, store, "/tmp/draft.md", "hey team\n")
+	if err := os.Remove(filepath.Join(dir, edit.ID+".orig")); err != nil {
+		t.Fatalf("remove draft copy: %v", err)
+	}
+
+	if _, _, err := store.Find(edit.ID); err == nil {
+		t.Error("expected an error when the draft copy is gone")
 	}
 }
 
 func TestFindUnknownIDReportsUnknownEdit(t *testing.T) {
 	store, _ := openTestStore(t)
 
-	if _, err := store.Find("abcdef0123"); !errors.Is(err, ErrUnknownEdit) {
+	if _, _, err := store.Find("abcdef0123"); !errors.Is(err, ErrUnknownEdit) {
 		t.Errorf("Find error = %v, want ErrUnknownEdit", err)
 	}
 }
@@ -82,73 +114,59 @@ func TestFindRejectsPathsDisguisedAsIDs(t *testing.T) {
 	store, _ := openTestStore(t)
 
 	for _, id := range []string{"../elsewhere", "..", "/etc/passwd", "not-hex"} {
-		if _, err := store.Find(id); !errors.Is(err, ErrUnknownEdit) {
+		if _, _, err := store.Find(id); !errors.Is(err, ErrUnknownEdit) {
 			t.Errorf("Find(%q) error = %v, want ErrUnknownEdit", id, err)
 		}
 	}
 }
 
-func TestForgetRemovesRecordAndExitCodeFile(t *testing.T) {
-	store, _ := openTestStore(t)
+func TestForgetRemovesEverythingBesideTheRecord(t *testing.T) {
+	store, dir := openTestStore(t)
 
-	edit, err := store.Begin("/tmp/draft.md", "abc123")
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
-	edit.Window.WindowID = "@42"
-	if err := store.Remember(edit); err != nil {
-		t.Fatalf("Remember: %v", err)
-	}
+	edit := remember(t, store, "/tmp/draft.md", "hey team\n")
 	if err := os.WriteFile(edit.Window.ExitCodeFile, []byte("0"), 0o600); err != nil {
 		t.Fatalf("write exit code: %v", err)
 	}
 
 	store.Forget(edit.ID)
 
-	if _, err := store.Find(edit.ID); !errors.Is(err, ErrUnknownEdit) {
+	if _, _, err := store.Find(edit.ID); !errors.Is(err, ErrUnknownEdit) {
 		t.Errorf("Find after Forget error = %v, want ErrUnknownEdit", err)
 	}
-	if _, err := os.Stat(edit.Window.ExitCodeFile); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("exit-code file survived Forget: %v", err)
+	for _, name := range []string{edit.ID + ".orig", edit.ID + ".rc"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s survived Forget: %v", name, err)
+		}
 	}
 }
 
 func TestRememberDropsAbandonedRecordsOnly(t *testing.T) {
 	store, dir := openTestStore(t)
 
-	abandoned, err := store.Begin("/tmp/old.md", "abc123")
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
-	if err := store.Remember(abandoned); err != nil {
-		t.Fatalf("Remember: %v", err)
-	}
+	abandoned := remember(t, store, "/tmp/old.md", "old draft\n")
 	stale := time.Now().Add(-forgetAfter - time.Hour)
 	recordPath := filepath.Join(dir, abandoned.ID+".json")
 	if err := os.Chtimes(recordPath, stale, stale); err != nil {
 		t.Fatalf("age record: %v", err)
 	}
 
-	fresh, err := store.Begin("/tmp/new.md", "def456")
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
-	if err := store.Remember(fresh); err != nil {
-		t.Fatalf("Remember: %v", err)
-	}
+	fresh := remember(t, store, "/tmp/new.md", "new draft\n")
 
-	if _, err := store.Find(abandoned.ID); !errors.Is(err, ErrUnknownEdit) {
+	if _, _, err := store.Find(abandoned.ID); !errors.Is(err, ErrUnknownEdit) {
 		t.Errorf("abandoned record survived: %v", err)
 	}
-	if _, err := store.Find(fresh.ID); err != nil {
+	if _, _, err := store.Find(fresh.ID); err != nil {
 		t.Errorf("fresh record dropped: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, abandoned.ID+".orig")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("abandoned draft copy survived: %v", err)
 	}
 }
 
 func TestHandleSurvivesTheRecord(t *testing.T) {
 	store, _ := openTestStore(t)
 
-	edit, err := store.Begin("/tmp/draft.md", "abc123")
+	edit, err := store.Begin("/tmp/draft.md")
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
@@ -157,17 +175,31 @@ func TestHandleSurvivesTheRecord(t *testing.T) {
 		ExitCodeFile:   edit.Window.ExitCodeFile,
 		ReturnToWindow: "@7",
 	}
-	if err := store.Remember(edit); err != nil {
+	if err := store.Remember(edit, []byte("hey team\n")); err != nil {
 		t.Fatalf("Remember: %v", err)
 	}
 
-	found, err := store.Find(edit.ID)
+	found, _, err := store.Find(edit.ID)
 	if err != nil {
 		t.Fatalf("Find: %v", err)
 	}
 	if _, err := editwindow.Reattach(found.Window); err != nil && os.Getenv("TMUX") != "" {
 		t.Errorf("recorded handle is not enough to reattach: %v", err)
 	}
+}
+
+func remember(t *testing.T, store *Store, draftPath, original string) Edit {
+	t.Helper()
+	edit, err := store.Begin(draftPath)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	edit.Window.WindowID = "@42"
+	edit.Window.ReturnToWindow = "@7"
+	if err := store.Remember(edit, []byte(original)); err != nil {
+		t.Fatalf("Remember: %v", err)
+	}
+	return edit
 }
 
 func openTestStore(t *testing.T) (store *Store, dir string) {

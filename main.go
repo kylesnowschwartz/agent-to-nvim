@@ -85,7 +85,7 @@ func hand(path string, focus bool, deadline time.Duration) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	edit, err := store.Begin(handed.Path(), handed.Fingerprint())
+	edit, err := store.Begin(handed.Path())
 	if err != nil {
 		return 0, err
 	}
@@ -110,7 +110,7 @@ func hand(path string, focus bool, deadline time.Duration) (int, error) {
 	// Record the edit before waiting, so a caller killed mid-wait still leaves
 	// something to collect.
 	edit.Window = session.Handle()
-	if err := store.Remember(edit); err != nil {
+	if err := store.Remember(edit, handed.Original()); err != nil {
 		return 0, err
 	}
 
@@ -123,7 +123,7 @@ func collect(id string, deadline time.Duration) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	edit, err := store.Find(id)
+	edit, original, err := store.Find(id)
 	if err != nil {
 		return 0, err
 	}
@@ -132,7 +132,7 @@ func collect(id string, deadline time.Duration) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return settle(store, edit, draft.Reopen(edit.DraftPath, edit.Fingerprint), session, deadline)
+	return settle(store, edit, draft.Reopen(edit.DraftPath, original), session, deadline)
 }
 
 // settle waits for the edit to finish and turns the result into an exit code.

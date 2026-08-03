@@ -68,6 +68,38 @@ func TestRereadIgnoresTouchedModificationTime(t *testing.T) {
 	}
 }
 
+func TestOriginalIsTheTextAsHandedOver(t *testing.T) {
+	path := writeDraft(t, "hey team\n")
+	handed, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	if err := os.WriteFile(path, []byte("rewritten\n"), 0o600); err != nil {
+		t.Fatalf("rewrite draft: %v", err)
+	}
+
+	if got := string(handed.Original()); got != "hey team\n" {
+		t.Errorf("Original() = %q, want the text read at Open", got)
+	}
+}
+
+// collect runs in a process that never saw the handover, so the original arrives
+// as bytes from the store rather than from a read of the file.
+func TestReopenJudgesAgainstTheRecordedOriginal(t *testing.T) {
+	path := writeDraft(t, "hey team, shipping today\n")
+
+	unchanged := Reopen(path, []byte("hey team, shipping today\n"))
+	if _, edited, err := unchanged.Reread(); err != nil || edited {
+		t.Errorf("Reread() edited = %v (err %v), want false", edited, err)
+	}
+
+	changed := Reopen(path, []byte("hey team\n"))
+	if _, edited, err := changed.Reread(); err != nil || !edited {
+		t.Errorf("Reread() edited = %v (err %v), want true", edited, err)
+	}
+}
+
 func TestPathIsAbsolute(t *testing.T) {
 	handed, err := Open(writeDraft(t, "hey team\n"))
 	if err != nil {
