@@ -83,8 +83,8 @@ to place the change. Marking words rather than lines keeps a one-word edit from
 reading as a rewritten paragraph, which is what pushes an agent back to guessing.
 
 The draft as handed over is kept in the state directory beside the session record,
-so `collect` reports the same change the blocking run would have. Both are dropped
-once the edit resolves.
+so `collect` reports the same change the blocking run would have. Everything the
+edit left there is dropped once it resolves.
 
 ## Long edits
 

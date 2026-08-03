@@ -116,9 +116,12 @@ draft. Two things it settles:
   alone, so do not treat the whole line as rewritten.
 
 Worth saying out loud to the user when the edit was substantive: name what they
-changed rather than replaying the whole text back at them. Pass `-diff=false` to
-suppress the report, which is only worth doing when the draft is large and the
-change does not matter to what happens next.
+changed rather than replaying the whole text back at them. Say it in plain words —
+`[-` and `{+` are markers for reading the report, not notation to repeat at
+somebody who just made the edit by hand.
+
+Pass `-diff=false` to suppress the report, which is only worth doing when the draft
+is large and the change does not matter to what happens next.
 
 ## Requirements
 
