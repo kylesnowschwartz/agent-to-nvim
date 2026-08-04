@@ -202,6 +202,36 @@ func remember(t *testing.T, store *Store, draftPath, original string) Edit {
 	return edit
 }
 
+func TestDropScratchRemovesADraftFromTheDraftsDirectory(t *testing.T) {
+	store, _ := openTestStore(t)
+	path := filepath.Join(store.DraftsDir(), "slack-launch-announcement.md")
+	if err := os.WriteFile(path, []byte("hey team\n"), 0o600); err != nil {
+		t.Fatalf("write scratch draft: %v", err)
+	}
+
+	store.DropScratch(path)
+
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("scratch draft survived the handover: %v", err)
+	}
+}
+
+// Handing over a file of the user's own is an edit to that file, so it stays put
+// however the edit ended.
+func TestDropScratchKeepsADraftFromAnywhereElse(t *testing.T) {
+	store, _ := openTestStore(t)
+	path := filepath.Join(t.TempDir(), "CHANGELOG.md")
+	if err := os.WriteFile(path, []byte("hey team\n"), 0o600); err != nil {
+		t.Fatalf("write draft: %v", err)
+	}
+
+	store.DropScratch(path)
+
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("draft outside the drafts directory was removed: %v", err)
+	}
+}
+
 func openTestStore(t *testing.T) (store *Store, dir string) {
 	t.Helper()
 	base := t.TempDir()

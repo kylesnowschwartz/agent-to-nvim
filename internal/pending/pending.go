@@ -58,11 +58,31 @@ func OpenStore() (*Store, error) {
 		base = filepath.Join(home, ".local", "state")
 	}
 
-	dir := filepath.Join(base, "agent-to-nvim")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	dir, err := filepath.Abs(filepath.Join(base, "agent-to-nvim"))
+	if err != nil {
+		return nil, fmt.Errorf("resolve state directory: %w", err)
+	}
+	store := &Store{dir: dir}
+	if err := os.MkdirAll(store.DraftsDir(), 0o700); err != nil {
 		return nil, fmt.Errorf("create state directory: %w", err)
 	}
-	return &Store{dir: dir}, nil
+	return store, nil
+}
+
+// DraftsDir is where an agent writes a draft that is not already a file of the
+// user's own. It is a fixed path so the agent can write straight to it, rather
+// than spending a command on minting a temp directory first.
+func (s *Store) DraftsDir() string { return filepath.Join(s.dir, "drafts") }
+
+// DropScratch removes a draft that lives in DraftsDir, so a scratch draft never
+// outlives the handover it was written for and the next handover under the same
+// name starts clean. A draft anywhere else is the user's own file — editing it
+// in place is the point, so it stays.
+func (s *Store) DropScratch(path string) {
+	if filepath.Dir(path) != s.DraftsDir() {
+		return
+	}
+	_ = os.Remove(path)
 }
 
 // Begin allocates an id and an exit-code path for a draft about to be handed

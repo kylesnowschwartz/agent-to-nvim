@@ -34,6 +34,12 @@ The file is edited in place, so an edit to a real project file is saved where it
 belongs. Agents should write the draft with a file tool and pass the path rather
 than piping text in.
 
+A draft that is not already a file goes in `~/.local/state/agent-to-nvim/drafts/`
+under a name that says what it is. That path is fixed so an agent can write
+straight to it rather than spending a command minting a temp directory first, and
+a draft handed over from there is removed once the edit resolves — so the next
+handover under the same name starts clean. A draft anywhere else is left alone.
+
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `-deadline` | `8m` | How long to wait before handing back a collect id. `0` waits forever. |
@@ -59,8 +65,28 @@ any output.
 Changed and unchanged are told apart by comparing content, not modification times
 — writing in nvim touches mtime even when nothing changed.
 
-Only the draft text ever goes to stdout. Status lines, the change report, and the
-resume command go to stderr, so a caller can use stdout directly.
+Only the draft text ever goes to stdout. Status lines, the change report, notes,
+and the resume command go to stderr, so a caller can use stdout directly.
+
+## Notes to the agent
+
+Editing a draft answers in two registers at once: the text gets fixed, and asides
+get left about it. A line started with `>>` is an aside — it is reported on stderr
+and kept off stdout, so what stdout carries can be sent as it stands:
+
+```
+$ agent-to-nvim announcement.md
+agent-to-nvim: draft edited
+@@ line 1 @@
+~ Launch is on [-Wednesday-]{+Thursday+}.
+note: check that with ops before you post it
+```
+
+The marker only counts at the start of a line, so an indented `>>` — a nested
+blockquote, a shell redirect in a code block — stays in the draft as text.
+
+A draft left word for word alone but annotated exits 0, not 10: the note is the
+edit, and there is something to act on.
 
 ## What changed
 

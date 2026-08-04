@@ -27,27 +27,25 @@ back.
 - **Anything else** — read it as which draft is meant ("the slack message", "the
   PR description"), then hand that one over.
 
-For a draft that is not already a file, put it in a fresh temp directory under a
-name that says what it is — the name shows in the tmux window title and gives nvim
-its filetype:
+For a draft that is not already a file, write it to:
 
 ```
-mktemp -d
-# → /var/folders/…/tmp.AbC123, so write to
-#   /var/folders/…/tmp.AbC123/slack-launch-announcement.md
+~/.local/state/agent-to-nvim/drafts/<name>.md
 ```
 
-Use a **new** directory every time. Reusing a fixed path leaves a stale draft from
-an earlier handover sitting there, and reading it back later mixes an old version
-into the current one.
+Name it for what it is — `slack-launch-announcement.md`, `pr-body.md`. The name
+shows in the tmux window title and gives nvim its filetype. Write it with the
+Write tool; do not try to pipe multiline text into the command. Do not run
+`mktemp` first — the path above is fixed on purpose, and the draft is removed
+once the edit resolves, so writing there needs no cleanup and no prior Read.
 
-Write the file with the Write tool. Do not try to pipe multiline text into the
-command.
+Pick a name you have not already used this session. If you have, add a word that
+tells the two apart rather than overwriting.
 
 ## Run it
 
 ```
-agent-to-nvim "$TMPDIR/slack-launch-announcement.md"
+agent-to-nvim ~/.local/state/agent-to-nvim/drafts/slack-launch-announcement.md
 ```
 
 **Set the Bash tool timeout to 600000.** The command blocks while the user edits,
@@ -63,7 +61,7 @@ The exit code is the whole result. Read it before anything else.
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 0 | Saved with changes | Use the printed text, not the draft. Continue with it. |
+| 0 | Saved with changes, or notes left | Use the printed text, not the draft. Do what any `note:` lines say first. |
 | 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
 | 20 | Discarded | **Stop.** Do not send, commit, or post anything. Do not re-run. |
 | 30 | Still being edited | Run the `collect` command printed on stderr. |
@@ -87,6 +85,35 @@ Two failure modes to avoid:
 On 0 or 10, the edited text is on stdout. Use exactly that text. Do not merge it
 with the original draft or re-apply wording that was edited out — an edit that
 removed something meant to remove it.
+
+## Do what the notes say
+
+A line the user starts with `>>` is a note to you, not draft text. The command
+keeps it off stdout and reports it on stderr instead:
+
+```
+agent-to-nvim: draft edited
+@@ line 1 @@
+~ Launch is on [-Wednesday-]{+Thursday+}.
+note: check that with ops before you post it
+```
+
+So stdout is always safe to send as it stands — you never have to strip anything
+out of it yourself.
+
+Each `note:` line is an instruction about the draft. Act on it before doing
+anything with the text:
+
+- **A note asking for a change** ("make this shorter", "drop the last para") means
+  the draft is not finished. Make the change and hand it back with
+  `agent-to-nvim` again rather than sending it.
+- **A note asking a question** ("is this the right channel?") is for you to answer
+  in the conversation, not to send.
+- **A note that only comments** ("nice") needs nothing.
+
+Exit 0 with `draft text unchanged, with notes` means they left the wording alone
+and told you something instead. There is still work to do — do not read it as
+approval.
 
 ## Read what changed
 
