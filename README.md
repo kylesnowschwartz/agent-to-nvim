@@ -37,8 +37,10 @@ than piping text in.
 A draft that is not already a file goes in `~/.local/state/agent-to-nvim/drafts/`
 under a name that says what it is. That path is fixed so an agent can write
 straight to it rather than spending a command minting a temp directory first, and
-a draft handed over from there is removed once the edit resolves — so the next
-handover under the same name starts clean. A draft anywhere else is left alone.
+a draft handed over from there is removed once its text has been handed back — so
+the next handover under the same name starts clean. A discarded or abandoned edit
+leaves the file alone, since those words went nowhere else. A draft outside that
+directory is never removed.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |

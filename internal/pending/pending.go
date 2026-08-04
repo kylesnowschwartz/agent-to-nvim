@@ -74,10 +74,14 @@ func OpenStore() (*Store, error) {
 // than spending a command on minting a temp directory first.
 func (s *Store) DraftsDir() string { return filepath.Join(s.dir, "drafts") }
 
-// DropScratch removes a draft that lives in DraftsDir, so a scratch draft never
-// outlives the handover it was written for and the next handover under the same
-// name starts clean. A draft anywhere else is the user's own file — editing it
-// in place is the point, so it stays.
+// DropScratch removes a draft that lives in DraftsDir, so a scratch draft does
+// not outlive the handover it was written for and the next handover under the
+// same name starts clean. A draft anywhere else is the user's own file — editing
+// it in place is the point, so it stays.
+//
+// Call this only once the text has been handed back. A draft whose edit was
+// discarded or abandoned holds words that went nowhere else, so it is left on
+// disk to be recovered.
 func (s *Store) DropScratch(path string) {
 	if filepath.Dir(path) != s.DraftsDir() {
 		return

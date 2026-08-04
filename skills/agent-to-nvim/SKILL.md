@@ -27,17 +27,23 @@ back.
 - **Anything else** — read it as which draft is meant ("the slack message", "the
   PR description"), then hand that one over.
 
-For a draft that is not already a file, write it to:
+For a draft that is not already a file, write it to the drafts directory under
+the user's home:
 
 ```
-~/.local/state/agent-to-nvim/drafts/<name>.md
+<home>/.local/state/agent-to-nvim/drafts/<name>.md
 ```
 
-Name it for what it is — `slack-launch-announcement.md`, `pr-body.md`. The name
-shows in the tmux window title and gives nvim its filetype. Write it with the
+Spell the home directory out. A file tool takes an absolute path and does not
+expand `~`, so a literal `~/...` lands in a directory called `~` beside wherever
+you are working. The home directory is the leading part of the paths you already
+have — `/Users/someone/Code/project` makes it `/Users/someone`.
+
+Name the file for what it is — `slack-launch-announcement.md`, `pr-body.md`. The
+name shows in the tmux window title and gives nvim its filetype. Write it with the
 Write tool; do not try to pipe multiline text into the command. Do not run
-`mktemp` first — the path above is fixed on purpose, and the draft is removed
-once the edit resolves, so writing there needs no cleanup and no prior Read.
+`mktemp` first — the path above is fixed on purpose, and the draft is removed once
+the edit resolves, so writing there needs no cleanup and no prior Read.
 
 Pick a name you have not already used this session. If you have, add a word that
 tells the two apart rather than overwriting.
@@ -63,7 +69,7 @@ The exit code is the whole result. Read it before anything else.
 | --- | --- | --- |
 | 0 | Saved with changes, or notes left | Use the printed text, not the draft. Do what any `note:` lines say first. |
 | 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
-| 20 | Discarded | **Stop.** Do not send, commit, or post anything. Do not re-run. |
+| 20 | Discarded | **Stop.** Do not send, commit, or post anything. Do not re-run. The file is left on disk in case they want it back. |
 | 30 | Still being edited | Run the `collect` command printed on stderr. |
 | 1 | Could not run the edit | Report the error. |
 

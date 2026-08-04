@@ -173,7 +173,6 @@ func settle(
 		return exitStillOpen, nil
 	case errors.Is(err, editwindow.ErrWindowClosed):
 		store.Forget(edit.ID)
-		store.DropScratch(handed.Path())
 		fmt.Fprintln(os.Stderr, "agent-to-nvim: edit window closed without saving")
 		return exitAborted, nil
 	case err != nil:
@@ -182,7 +181,6 @@ func settle(
 
 	store.Forget(edit.ID)
 	if editorCode != 0 {
-		store.DropScratch(handed.Path())
 		fmt.Fprintln(os.Stderr, "agent-to-nvim: draft discarded in the editor")
 		return exitAborted, nil
 	}
@@ -191,6 +189,9 @@ func settle(
 	if err != nil {
 		return 0, err
 	}
+	// Only once the text is safely in hand. An abandoned or discarded edit leaves
+	// the file where it is: a human who saved and then closed the window still has
+	// their words on disk, and nothing has printed them anywhere else.
 	store.DropScratch(handed.Path())
 
 	back := readBack(string(handed.Original()), current)
@@ -221,20 +222,27 @@ func readBack(original, current string) handback {
 func announce(w io.Writer, back handback, showDiff bool) int {
 	switch {
 	case back.text == back.before && len(back.notes) == 0:
-		fmt.Fprintln(w, "agent-to-nvim: draft saved unchanged")
+		say(w, "agent-to-nvim: draft saved unchanged\n")
 		return exitUnchanged
 	case back.text == back.before:
-		fmt.Fprintln(w, "agent-to-nvim: draft text unchanged, with notes")
+		say(w, "agent-to-nvim: draft text unchanged, with notes\n")
 	default:
-		fmt.Fprintln(w, "agent-to-nvim: draft edited")
+		say(w, "agent-to-nvim: draft edited\n")
 		if showDiff {
-			fmt.Fprint(w, textdiff.Unified(back.before, back.text))
+			say(w, "%s", textdiff.Unified(back.before, back.text))
 		}
 	}
 	for _, note := range back.notes {
-		fmt.Fprintf(w, "note: %s\n", note)
+		say(w, "note: %s\n", note)
 	}
 	return exitEdited
+}
+
+// say reports on the outcome. Reporting is best effort: a run whose stderr has
+// gone away has no better outcome left to fall back to, and the text itself has
+// already gone to stdout.
+func say(w io.Writer, format string, a ...any) {
+	_, _ = fmt.Fprintf(w, format, a...)
 }
 
 func usage() {
