@@ -4,7 +4,6 @@
 package draft
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,13 +54,14 @@ func (d *Draft) Path() string { return d.path }
 // compared against.
 func (d *Draft) Original() []byte { return d.original }
 
-// Reread returns the file's current text and whether it differs from the text
-// read at Open. Content is compared rather than modification time because
-// writing in nvim touches mtime even when nothing changed.
-func (d *Draft) Reread() (text string, edited bool, err error) {
+// Reread returns the file's current text. Whether that counts as an edit is the
+// caller's call against Original, and it is settled by comparing content rather
+// than modification time: writing in nvim touches mtime even when nothing
+// changed.
+func (d *Draft) Reread() (string, error) {
 	current, err := os.ReadFile(d.path)
 	if err != nil {
-		return "", false, fmt.Errorf("read edited draft: %w", err)
+		return "", fmt.Errorf("read edited draft: %w", err)
 	}
-	return string(current), !bytes.Equal(current, d.original), nil
+	return string(current), nil
 }

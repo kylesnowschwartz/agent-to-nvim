@@ -19,7 +19,7 @@ func TestOpenRejectsDirectory(t *testing.T) {
 	}
 }
 
-func TestRereadReportsEditedContent(t *testing.T) {
+func TestRereadReturnsTheCurrentText(t *testing.T) {
 	path := writeDraft(t, "hey team\n")
 	handed, err := Open(path)
 	if err != nil {
@@ -30,21 +30,19 @@ func TestRereadReportsEditedContent(t *testing.T) {
 		t.Fatalf("rewrite draft: %v", err)
 	}
 
-	text, edited, err := handed.Reread()
+	text, err := handed.Reread()
 	if err != nil {
 		t.Fatalf("Reread: %v", err)
-	}
-	if !edited {
-		t.Error("expected edited=true after the content changed")
 	}
 	if want := "hey team, shipping today\n"; text != want {
 		t.Errorf("text = %q, want %q", text, want)
 	}
 }
 
-// A save in nvim rewrites the file even when the text is identical, so a fresh
-// modification time must not read as an edit.
-func TestRereadIgnoresTouchedModificationTime(t *testing.T) {
+// A save in nvim rewrites the file even when the text is identical, so what
+// comes back has to be the content itself for the caller to compare — a fresh
+// modification time says nothing about whether anything changed.
+func TestRereadReturnsContentAfterATouchedModificationTime(t *testing.T) {
 	path := writeDraft(t, "hey team\n")
 	handed, err := Open(path)
 	if err != nil {
@@ -59,12 +57,12 @@ func TestRereadIgnoresTouchedModificationTime(t *testing.T) {
 		t.Fatalf("touch draft: %v", err)
 	}
 
-	_, edited, err := handed.Reread()
+	text, err := handed.Reread()
 	if err != nil {
 		t.Fatalf("Reread: %v", err)
 	}
-	if edited {
-		t.Error("expected edited=false for byte-identical content")
+	if text != string(handed.Original()) {
+		t.Errorf("text = %q, want it identical to the handed-over draft", text)
 	}
 }
 
@@ -86,17 +84,19 @@ func TestOriginalIsTheTextAsHandedOver(t *testing.T) {
 
 // collect runs in a process that never saw the handover, so the original arrives
 // as bytes from the store rather than from a read of the file.
-func TestReopenJudgesAgainstTheRecordedOriginal(t *testing.T) {
+func TestReopenCarriesTheRecordedOriginal(t *testing.T) {
 	path := writeDraft(t, "hey team, shipping today\n")
+	resumed := Reopen(path, []byte("hey team\n"))
 
-	unchanged := Reopen(path, []byte("hey team, shipping today\n"))
-	if _, edited, err := unchanged.Reread(); err != nil || edited {
-		t.Errorf("Reread() edited = %v (err %v), want false", edited, err)
+	if got := string(resumed.Original()); got != "hey team\n" {
+		t.Errorf("Original() = %q, want the recorded text", got)
 	}
-
-	changed := Reopen(path, []byte("hey team\n"))
-	if _, edited, err := changed.Reread(); err != nil || !edited {
-		t.Errorf("Reread() edited = %v (err %v), want true", edited, err)
+	text, err := resumed.Reread()
+	if err != nil {
+		t.Fatalf("Reread: %v", err)
+	}
+	if want := "hey team, shipping today\n"; text != want {
+		t.Errorf("text = %q, want %q", text, want)
 	}
 }
 

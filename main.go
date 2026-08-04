@@ -5,6 +5,10 @@
 // continue with what the human actually wants to send. The exit code says which
 // outcome happened — see the constants below.
 //
+// Stdout carries the draft and nothing else, so a caller can send it as it
+// stands. A line the human starts with ">>" is an aside to the agent rather than
+// draft text, and is reported on stderr instead of being handed on.
+//
 // Waiting is bounded so the caller exits on its own terms rather than being
 // killed by whatever timeout wraps it. When the deadline passes, nvim keeps
 // running and `agent-to-nvim collect <id>` picks the same edit back up.
@@ -15,12 +19,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/editwindow"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/notes"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/pending"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/textdiff"
 )
@@ -167,6 +173,7 @@ func settle(
 		return exitStillOpen, nil
 	case errors.Is(err, editwindow.ErrWindowClosed):
 		store.Forget(edit.ID)
+		store.DropScratch(handed.Path())
 		fmt.Fprintln(os.Stderr, "agent-to-nvim: edit window closed without saving")
 		return exitAborted, nil
 	case err != nil:
@@ -175,25 +182,59 @@ func settle(
 
 	store.Forget(edit.ID)
 	if editorCode != 0 {
+		store.DropScratch(handed.Path())
 		fmt.Fprintln(os.Stderr, "agent-to-nvim: draft discarded in the editor")
 		return exitAborted, nil
 	}
 
-	text, edited, err := handed.Reread()
+	current, err := handed.Reread()
 	if err != nil {
 		return 0, err
 	}
+	store.DropScratch(handed.Path())
 
-	fmt.Print(text)
-	if !edited {
-		fmt.Fprintln(os.Stderr, "agent-to-nvim: draft saved unchanged")
-		return exitUnchanged, nil
+	back := readBack(string(handed.Original()), current)
+	fmt.Print(back.text)
+	return announce(os.Stderr, back, set.diff), nil
+}
+
+// handback is what came back from the human: the draft text to hand on, the
+// notes they left for the agent, and the draft as it went over so the change can
+// be reported.
+type handback struct {
+	text   string
+	notes  []string
+	before string
+}
+
+// readBack separates notes from draft text on both sides, so the change reported
+// is a change to the draft rather than to the asides written about it.
+func readBack(original, current string) handback {
+	text, left := notes.Split(current)
+	before, _ := notes.Split(original)
+	return handback{text: text, notes: left, before: before}
+}
+
+// announce reports the outcome and returns the exit code for it. Unchanged means
+// nothing came back to act on, so a draft left word for word alone but annotated
+// counts as edited: the notes are the edit.
+func announce(w io.Writer, back handback, showDiff bool) int {
+	switch {
+	case back.text == back.before && len(back.notes) == 0:
+		fmt.Fprintln(w, "agent-to-nvim: draft saved unchanged")
+		return exitUnchanged
+	case back.text == back.before:
+		fmt.Fprintln(w, "agent-to-nvim: draft text unchanged, with notes")
+	default:
+		fmt.Fprintln(w, "agent-to-nvim: draft edited")
+		if showDiff {
+			fmt.Fprint(w, textdiff.Unified(back.before, back.text))
+		}
 	}
-	fmt.Fprintln(os.Stderr, "agent-to-nvim: draft edited")
-	if set.diff {
-		fmt.Fprint(os.Stderr, textdiff.Unified(string(handed.Original()), text))
+	for _, note := range back.notes {
+		fmt.Fprintf(w, "note: %s\n", note)
 	}
-	return exitEdited, nil
+	return exitEdited
 }
 
 func usage() {
@@ -214,6 +255,12 @@ What the human changed is reported on stderr, marked word by word:
   + Ping me if that clashes with anything.
 
   ~ replaced, marked [-removed-]{+added+}    - removed    + added    (blank) unchanged
+
+A line the human starts with ">>" is a note to the agent, not part of the draft.
+It is reported on stderr and kept off stdout, so what stdout carries can be sent
+as it stands:
+
+  note: make this shorter
 
 exit codes:
   0   saved with changes
