@@ -3,6 +3,8 @@ package planwindow
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -58,7 +60,7 @@ func TestArgsRewritesTheSetupOverAStaleOne(t *testing.T) {
 // it has to bind every answer and say so where they will see it.
 func TestTheSetupOffersEveryAnswerAndBothNoteMarkers(t *testing.T) {
 	for _, want := range []string{
-		"Approve", "Revise", "cquit", ">>", ">>>", "winbar", "auto mode",
+		"Approve", "Revise", "AnswerInCLI", "cquit", ">>", ">>>", "winbar", "auto mode",
 	} {
 		if !strings.Contains(setup, want) {
 			t.Errorf("the setup is missing %q", want)
@@ -72,5 +74,38 @@ func TestTheSetupOffersEveryAnswerAndBothNoteMarkers(t *testing.T) {
 func TestTheSetupMarksTheFileTheToolLooksFor(t *testing.T) {
 	if !strings.Contains(setup, `.. ".auto"`) {
 		t.Error("the setup does not write the mark beside the plan as <plan>.auto")
+	}
+}
+
+// The reader says "let the dialog answer" in the code the editor exits with, and
+// the tool recognises that answer by the same number. It is written down in two
+// languages, so a change to one that misses the other turns a deliberate handover
+// into what reads as a crash.
+func TestTheEditorHandsOverWithTheCodeTheToolReads(t *testing.T) {
+	declared := regexp.MustCompile(`local handed_to_the_dialog = (\d+)`).FindStringSubmatch(setup)
+	if declared == nil {
+		t.Fatal("the setup no longer declares handed_to_the_dialog, so the tool's exit code has nothing to agree with")
+	}
+
+	inTheEditor, err := strconv.Atoi(declared[1])
+	if err != nil {
+		t.Fatalf("the setup declares a handed_to_the_dialog that is not a number: %v", err)
+	}
+	if inTheEditor != HandedToTheDialog {
+		t.Errorf("the setup exits with %d, the tool reads %d", inTheEditor, HandedToTheDialog)
+	}
+}
+
+// The top of the window is the only place a reader is told an answer exists, so an
+// answer missing from it is one nobody will give.
+func TestTheTopOfTheWindowNamesEveryKey(t *testing.T) {
+	top := setup[strings.Index(setup, "winbar"):]
+
+	for _, key := range []string{
+		"<leader>a", "<leader>A", "<leader>c", "<leader>r", "<leader>n", "<leader>N",
+	} {
+		if !strings.Contains(top, key) {
+			t.Errorf("the top of the window does not say what %s does", key)
+		}
 	}
 }

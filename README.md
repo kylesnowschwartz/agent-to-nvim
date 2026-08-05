@@ -224,13 +224,14 @@ along the top so there is nothing to remember:
 | --- | --- |
 | `<leader>a` | Carry this plan out. |
 | `<leader>A` | Carry it out in auto mode, confirming nothing with you. |
+| `<leader>c` | Answer in Claude Code's own dialog instead. Edits here are dropped. |
 | `<leader>r` | Send it back to be revised. |
 | `<leader>n` | Open a note about this part of the plan. |
 | `<leader>N` | Open a note about the whole plan. |
 
-`:Approve`, `:Approve!`, and `:Revise` do the same as the first three. Under them
-they are just saving and quitting — `:wq` approves and `:cq` sends the plan back —
-so the keys are a convenience rather than a requirement.
+`:Approve`, `:Approve!`, `:AnswerInCLI`, and `:Revise` do the same as the first
+four. Under them they are just saving and quitting — `:wq` approves and `:cq` sends
+the plan back — so the keys are a convenience rather than a requirement.
 
 `<leader>A` switches the session to auto mode as well as approving, so the work runs
 start to finish without stopping to have each step confirmed. It matches the "Yes,
@@ -240,7 +241,15 @@ in whatever mode it was already in.
 The dialog's first answer — clearing the context as well — has no equivalent here.
 Clearing the context is not something the answer to a plan request can carry: Claude
 Code does it by turning the request down and starting a fresh turn with the plan in
-it, which is not a decision a hook can return.
+it, which is not a decision a hook can return. There is a request open for one at
+[anthropics/claude-code#84098](https://github.com/anthropics/claude-code/issues/84098).
+
+`<leader>c` is for exactly that answer. Claude Code shows its own dialog while this
+window is open and takes whichever answer arrives first, so a reader who wants the
+context cleared has to give it there. Pressing `<leader>c` says so: the window
+closes, the tool writes no answer, and the dialog is left to decide. The plan is
+read in nvim and answered in Claude Code, which is why edits made in the window are
+dropped — the dialog approves the plan as it was submitted.
 
 Notes travel either way, and which key you pressed decides what they are for:
 

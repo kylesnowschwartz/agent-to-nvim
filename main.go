@@ -195,9 +195,14 @@ func reviewPlan(set settings) int {
 	return exitAnswered
 }
 
-// standDown reports why a review could not run and leaves the answer unwritten, so
-// Claude Code asks about the plan its own way rather than acting on a verdict
-// nobody gave.
+// errHandedToTheDialog reports that the reviewer wants Claude Code's own approval
+// dialog to answer this plan, so this review has no verdict to give.
+var errHandedToTheDialog = errors.New("the reviewer left this plan to Claude Code's own dialog")
+
+// standDown leaves the answer unwritten, so Claude Code asks about the plan its own
+// way rather than acting on a verdict nobody gave. It covers both a review that
+// could not run and one the reviewer handed over on purpose, because either way
+// there is no verdict and the reason belongs on stderr.
 //
 // Exit 1 rather than 2: a blocking error would turn the plan down on the reviewer's
 // behalf, and a plan nobody managed to look at has not been turned down.
@@ -251,6 +256,15 @@ func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
 	if err != nil && !errors.Is(err, editwindow.ErrWindowClosed) {
 		return planhook.Review{}, err
 	}
+	// Handing the plan to Claude Code's dialog ends the review without a verdict.
+	// Nothing reads the copy after that, and the plan travels in the dialog's own
+	// answer, so the copy goes with the window.
+	if err == nil && editorCode == planwindow.HandedToTheDialog {
+		_ = os.Remove(askedForAuto)
+		_ = os.Remove(path)
+		return planhook.Review{}, errHandedToTheDialog
+	}
+
 	// A killed window is not an approval, but anything saved before it went is
 	// still the reviewer's and still worth reading.
 	saved := err == nil && editorCode == 0
@@ -438,9 +452,10 @@ running and the printed id resumes the same edit.
 "plan" is Claude Code's plan-review hook. It reads the request to leave plan mode
 on stdin, opens the plan in nvim, and writes the answer on stdout. In that window
 <leader>a carries the plan out, <leader>A carries it out in auto mode so no step waits
-to be confirmed, <leader>r sends it back to be revised, and <leader>n and <leader>N
-open a note about this part of the plan or all of it. The window says so along the
-top.
+to be confirmed, <leader>c leaves the answer to Claude Code's own dialog and drops
+any edits made here, <leader>r sends it back to be revised, and <leader>n and
+<leader>N open a note about this part of the plan or all of it. The window says so
+along the top.
 Waiting is unbounded there — Claude Code's own hook timeout is what bounds it.
 
 What the human changed is reported on stderr, marked word by word:

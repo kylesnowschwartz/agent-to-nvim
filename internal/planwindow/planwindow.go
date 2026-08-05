@@ -17,6 +17,18 @@ import (
 //go:embed review.lua
 var setup string
 
+// HandedToTheDialog is the exit code the reader leaves when they want Claude
+// Code's own approval dialog to answer instead of this window.
+//
+// Claude Code asks the same question in two places at once and takes whichever
+// answer arrives first. Its dialog can offer one this window cannot: approving
+// with the conversation cleared. So the reader needs a way to say which of the
+// two is answering, and a distinct exit code is it — 0 already means approve and
+// 1 means revise.
+//
+// review.lua declares the same number, and a test holds the two together.
+const HandedToTheDialog = 7
+
 // Args returns the editor arguments that load the review setup, writing the setup
 // out under dir first.
 //

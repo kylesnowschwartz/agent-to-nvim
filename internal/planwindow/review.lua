@@ -49,9 +49,23 @@ vim.api.nvim_buf_create_user_command(plan, "Revise", function()
   vim.cmd("cquit")
 end, { desc = "send the plan back to be revised" })
 
+-- Claude Code puts the same plan in front of the reader twice, here and in its own
+-- approval dialog, and takes whichever answer comes first. Only the dialog can
+-- offer to clear the conversation along with the approval, so a reader who wants
+-- that has to answer there. This code says so outright, and the tool closes this
+-- window and writes no answer of its own. It has to match
+-- planwindow.HandedToTheDialog. Nothing here is read afterwards, so edits made in
+-- this buffer are dropped rather than saved.
+local handed_to_the_dialog = 7
+
+vim.api.nvim_buf_create_user_command(plan, "AnswerInCLI", function()
+  vim.cmd("cquit " .. handed_to_the_dialog)
+end, { desc = "answer in Claude Code's own dialog instead; edits here are dropped" })
+
 local keys = {
   { "<leader>a", "<Cmd>Approve<CR>", "carry this plan out" },
   { "<leader>A", "<Cmd>Approve!<CR>", "carry it out in auto mode, confirming nothing" },
+  { "<leader>c", "<Cmd>AnswerInCLI<CR>", "answer in Claude Code's own dialog; edits here are dropped" },
   { "<leader>r", "<Cmd>Revise<CR>", "send the plan back to be revised" },
   { "<leader>n", function() note(">>") end, "note about this part of the plan" },
   { "<leader>N", function() note(">>>") end, "note about the whole plan" },
@@ -64,6 +78,7 @@ vim.opt_local.winbar = table.concat({
   "  plan review",
   "<leader>a approve",
   "<leader>A approve, auto mode",
+  "<leader>c answer in the CLI",
   "<leader>r revise",
   "<leader>n note here",
   "<leader>N note on all of it",
