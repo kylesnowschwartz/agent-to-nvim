@@ -185,19 +185,25 @@ with it becomes the answer.
 agent-to-nvim plan   # reads the request on stdin, writes the answer on stdout
 ```
 
-Two keys are the whole verdict, and both are spelled out along the top of the
-window so there is nothing to remember:
+Closing the window is the whole verdict, and every way to do it is spelled out
+along the top so there is nothing to remember:
 
 | Key | What it means |
 | --- | --- |
 | `<leader>a` | Carry this plan out. |
+| `<leader>A` | Carry it out without being asked about each edit. |
 | `<leader>r` | Send it back to be revised. |
 | `<leader>n` | Open a note about this part of the plan. |
 | `<leader>N` | Open a note about the whole plan. |
 
-`:Approve` and `:Revise` do the same as the first two. Under them they are just
-saving and quitting — `:wq` approves and `:cq` sends the plan back — so the keys
-are a convenience rather than a requirement.
+`:Approve`, `:Approve!`, and `:Revise` do the same as the first three. Under them
+they are just saving and quitting — `:wq` approves and `:cq` sends the plan back —
+so the keys are a convenience rather than a requirement.
+
+`<leader>A` is for approving and walking away. It puts the session into
+accept-edits mode for the rest of its life, which is the same second answer Claude
+Code's own dialog offers, so the work runs to the end without stopping to ask.
+`<leader>a` leaves the session in whatever mode it was already in.
 
 Notes travel either way, and which key you pressed decides what they are for:
 

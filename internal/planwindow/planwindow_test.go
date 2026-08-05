@@ -55,11 +55,22 @@ func TestArgsRewritesTheSetupOverAStaleOne(t *testing.T) {
 }
 
 // The setup is the only place a reader is told what saving and quitting mean, so
-// it has to bind both and say so where they will see it.
-func TestTheSetupOffersBothVerdictsAndBothNoteMarkers(t *testing.T) {
-	for _, want := range []string{"Approve", "Revise", "cquit", ">>", ">>>", "winbar"} {
+// it has to bind every answer and say so where they will see it.
+func TestTheSetupOffersEveryAnswerAndBothNoteMarkers(t *testing.T) {
+	for _, want := range []string{
+		"Approve", "Revise", "cquit", ">>", ">>>", "winbar", "accept-edits",
+	} {
 		if !strings.Contains(setup, want) {
 			t.Errorf("the setup is missing %q", want)
 		}
+	}
+}
+
+// The mark is what widens the session, and the name has to be the one the tool
+// looks for — a rename on one side only would silently stop the wider answer
+// reaching anybody.
+func TestTheSetupMarksTheFileTheToolLooksFor(t *testing.T) {
+	if !strings.Contains(setup, `.. ".accept-edits"`) {
+		t.Error("the setup does not write the mark beside the plan as <plan>.accept-edits")
 	}
 }

@@ -24,6 +24,10 @@ type Review struct {
 	Submitted string
 	// Notes are the asides they left in it.
 	Notes []notes.Note
+	// AcceptEdits is whether they approved without staying to watch, and so do
+	// not want to be asked about each edit the plan leads to. It only means
+	// anything alongside an approval.
+	AcceptEdits bool
 }
 
 // Changed reports whether the human rewrote any of the plan itself.
@@ -35,7 +39,12 @@ func (r Review) Answer(submitted map[string]any) Decision {
 	if !r.Approved {
 		return Deny(r.brief())
 	}
-	return Allow(r.approvedPlan(), submitted)
+
+	approval := Allow(r.approvedPlan(), submitted)
+	if r.AcceptEdits {
+		approval = approval.AcceptingEdits()
+	}
+	return approval
 }
 
 // approvedPlan is the plan to carry out: the one the human left, with anything

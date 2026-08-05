@@ -1,6 +1,7 @@
 package planhook
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -92,6 +93,46 @@ func TestAnApprovedPlanCarriesItsNotesInside(t *testing.T) {
 		if !strings.Contains(carried, want) {
 			t.Errorf("plan = %q, want it to contain %q", carried, want)
 		}
+	}
+}
+
+// Approving a plan on its own leaves the session in the mode it was already in,
+// so widening it has to be asked for rather than come free with every approval.
+func TestAnApprovalDoesNotWidenWhatTheSessionMayDoOnItsOwn(t *testing.T) {
+	plan := "# Launch\n"
+	got := answerFor(Review{Approved: true, Plan: plan, Submitted: plan})
+
+	if got.Permissions != nil {
+		t.Errorf("permissions = %+v, want none unless asked for", got.Permissions)
+	}
+}
+
+// Approving without staying to watch says not to ask about each edit the plan
+// leads to, which is the second answer Claude Code's own dialog offers.
+func TestApprovingUnwatchedStopsTheSessionAskingAboutEachEdit(t *testing.T) {
+	plan := "# Launch\n"
+	got := answerFor(Review{Approved: true, Plan: plan, Submitted: plan, AcceptEdits: true})
+
+	if got.Behavior != "allow" {
+		t.Errorf("behavior = %q, want allow", got.Behavior)
+	}
+	want := []permission{{Type: "setMode", Mode: "acceptEdits", Destination: "session"}}
+	if !reflect.DeepEqual(got.Permissions, want) {
+		t.Errorf("permissions = %+v, want %+v", got.Permissions, want)
+	}
+}
+
+// A refusal must never widen anything, however the mark was left: the plan is not
+// being carried out, so there is nothing to stop asking about.
+func TestARefusalNeverWidensWhatTheSessionMayDo(t *testing.T) {
+	plan := "# Launch\n"
+	got := answerFor(Review{Approved: false, Plan: plan, Submitted: plan, AcceptEdits: true})
+
+	if got.Behavior != "deny" {
+		t.Errorf("behavior = %q, want deny", got.Behavior)
+	}
+	if got.Permissions != nil {
+		t.Errorf("permissions = %+v, want none on a refusal", got.Permissions)
 	}
 }
 

@@ -84,9 +84,17 @@ type output struct {
 }
 
 type verdict struct {
-	Behavior string         `json:"behavior"`
-	Input    map[string]any `json:"updatedInput,omitempty"`
-	Message  string         `json:"message,omitempty"`
+	Behavior    string         `json:"behavior"`
+	Input       map[string]any `json:"updatedInput,omitempty"`
+	Permissions []permission   `json:"updatedPermissions,omitempty"`
+	Message     string         `json:"message,omitempty"`
+}
+
+// permission is a change to what the session may do without asking again.
+type permission struct {
+	Type        string `json:"type"`
+	Mode        string `json:"mode"`
+	Destination string `json:"destination"`
 }
 
 // Allow approves the plan and hands back the one to carry out, which is the
@@ -107,6 +115,22 @@ func Allow(plan string, submitted map[string]any) Decision {
 		Name:    "PermissionRequest",
 		Verdict: verdict{Behavior: "allow", Input: input},
 	}}
+}
+
+// AcceptingEdits returns the approval with the session switched to accepting
+// edits, so a reviewer who approved and walked away is not asked about each one.
+//
+// Approving a plan does not otherwise widen anything: the session lands in the
+// mode it was already in. Claude Code's own approval dialog offers this as its
+// second answer, and without it a plan approved here is followed by a prompt per
+// edit.
+func (d Decision) AcceptingEdits() Decision {
+	d.Output.Verdict.Permissions = append(d.Output.Verdict.Permissions, permission{
+		Type:        "setMode",
+		Mode:        "acceptEdits",
+		Destination: "session",
+	})
+	return d
 }
 
 // Deny sends the plan back with what the human said about it.

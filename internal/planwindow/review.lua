@@ -19,13 +19,30 @@ local function note(marker)
   vim.cmd("startinsert!")
 end
 
+-- Approving and then walking away is a second answer, and it is written down
+-- beside the plan rather than carried in the exit code. An editor that crashes
+-- exits how it likes, and none of those ways may read as "approve and stop asking
+-- about edits" — so the wider answer is the one that has to be said explicitly,
+-- and its absence is the narrower one.
+local function leave_unwatched()
+  local marked = io.open(vim.api.nvim_buf_get_name(plan) .. ".accept-edits", "w")
+  if not marked then return end
+  marked:write("yes")
+  marked:close()
+end
+
 -- Saving is approval and quitting with a failure is a request to revise. Both
 -- write first: the notes are the answer either way, and an unwritten buffer would
 -- send the plan back with nothing said about it.
-vim.api.nvim_buf_create_user_command(plan, "Approve", function()
+local function approve(unwatched)
+  if unwatched then leave_unwatched() end
   vim.cmd("write")
   vim.cmd("quit")
-end, { desc = "carry this plan out" })
+end
+
+vim.api.nvim_buf_create_user_command(plan, "Approve", function(cmd)
+  approve(cmd.bang)
+end, { bang = true, desc = "carry this plan out; with ! do not ask about each edit" })
 
 vim.api.nvim_buf_create_user_command(plan, "Revise", function()
   vim.cmd("write")
@@ -34,6 +51,7 @@ end, { desc = "send the plan back to be revised" })
 
 local keys = {
   { "<leader>a", "<Cmd>Approve<CR>", "carry this plan out" },
+  { "<leader>A", "<Cmd>Approve!<CR>", "carry it out without asking about each edit" },
   { "<leader>r", "<Cmd>Revise<CR>", "send the plan back to be revised" },
   { "<leader>n", function() note(">>") end, "note about this part of the plan" },
   { "<leader>N", function() note(">>>") end, "note about the whole plan" },
@@ -45,10 +63,11 @@ end
 vim.opt_local.winbar = table.concat({
   "  plan review",
   "<leader>a approve",
+  "<leader>A approve, don't ask",
   "<leader>r revise",
   "<leader>n note here",
   "<leader>N note on all of it",
-}, "     ")
+}, "    ")
 
 -- A note is not plan text, so it reads as set apart from it.
 vim.fn.matchadd("Todo", "^>>>\\?.*$")

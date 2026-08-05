@@ -227,10 +227,13 @@ func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
 		return planhook.Review{}, err
 	}
 
-	// A code left behind by a review nobody finished would read as this one being
-	// over the instant it opens.
-	recorded := path + ".rc"
+	// Anything a review nobody finished left behind has to go before this one
+	// opens: a stale exit code reads as this review being over the instant it
+	// starts, and a stale mark widens what the session may do off somebody else's
+	// answer.
+	recorded, unwatched := path+".rc", path+".accept-edits"
 	_ = os.Remove(recorded)
+	_ = os.Remove(unwatched)
 
 	session, err := editwindow.Start(editwindow.Request{
 		Path:         path,
@@ -258,6 +261,13 @@ func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
 	}
 	plan, left := notes.Split(string(reviewed))
 
+	// The editor writes this down only when the reviewer said so outright, so its
+	// absence is the narrower answer — which is what an editor that died before
+	// saying anything leaves behind.
+	_, marked := os.Stat(unwatched)
+	acceptEdits := saved && marked == nil
+	_ = os.Remove(unwatched)
+
 	if saved {
 		// An approved plan travels back inside the answer, so the copy has nothing
 		// left to hold. A plan sent back keeps its copy: the reviewer's own wording
@@ -266,10 +276,11 @@ func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
 	}
 
 	return planhook.Review{
-		Approved:  saved,
-		Plan:      plan,
-		Submitted: event.Plan(),
-		Notes:     left,
+		Approved:    saved,
+		Plan:        plan,
+		Submitted:   event.Plan(),
+		Notes:       left,
+		AcceptEdits: acceptEdits,
 	}, nil
 }
 
@@ -426,10 +437,10 @@ running and the printed id resumes the same edit.
 
 "plan" is Claude Code's plan-review hook. It reads the request to leave plan mode
 on stdin, opens the plan in nvim, and writes the answer on stdout. In that window
-<leader>a carries the plan out, <leader>r sends it back to be revised, and
-<leader>n and <leader>N open a note about this part of the plan or all of it. The
-window says so along the top. Waiting is unbounded there — Claude Code's own hook
-timeout is what bounds it.
+<leader>a carries the plan out, <leader>A carries it out without asking about each
+edit, <leader>r sends it back to be revised, and <leader>n and <leader>N open a
+note about this part of the plan or all of it. The window says so along the top.
+Waiting is unbounded there — Claude Code's own hook timeout is what bounds it.
 
 What the human changed is reported on stderr, marked word by word:
 
