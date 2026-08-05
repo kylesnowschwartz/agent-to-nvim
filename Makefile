@@ -1,6 +1,7 @@
-SKILL_LINK := $(HOME)/.claude/skills/agent-to-nvim
+PLUGIN := .claude-plugin/plugin.json
+MARKETPLACE := .claude-plugin/marketplace.json
 
-.PHONY: build test lint fmt install install-skill uninstall-skill
+.PHONY: build test lint fmt install check version-check
 
 build:
 	go build -o .bin/agent-to-nvim .
@@ -17,11 +18,17 @@ fmt:
 install:
 	go install .
 
-# A personal skill is reachable as /agent-to-nvim; a plugin skill would be
-# /agent-to-nvim:agent-to-nvim. Symlinked so edits in this checkout take effect.
-install-skill:
-	ln -sfn $(CURDIR)/skills/agent-to-nvim $(SKILL_LINK)
-	@echo "linked $(SKILL_LINK) -> $(CURDIR)/skills/agent-to-nvim"
+check: test lint version-check
 
-uninstall-skill:
-	rm -f $(SKILL_LINK)
+# The plugin manifest keys the install cache and the marketplace entry is what a
+# reader browsing the catalogue sees, so a bump applied to one and not the other
+# looks like it worked from either side alone.
+version-check:
+	@plugin=$$(jq -r '.version' $(PLUGIN)); \
+	catalogue=$$(jq -r '.plugins[] | select(.name == "agent-to-nvim") | .version' $(MARKETPLACE)); \
+	if [ "$$plugin" != "$$catalogue" ]; then \
+		echo "version mismatch: $(PLUGIN) says $$plugin, $(MARKETPLACE) says $$catalogue" >&2; \
+		echo "bump whichever is behind so an install and the catalogue agree" >&2; \
+		exit 1; \
+	fi; \
+	echo "version $$plugin in both manifests"

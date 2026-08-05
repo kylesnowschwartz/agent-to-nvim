@@ -280,19 +280,18 @@ installing.
 ## Claude Code skill
 
 The `agent-to-nvim` skill teaches agents when to reach for this and how to read the
-exit codes. Link it in as a personal skill:
+exit codes. Installing the plugin brings it along, reachable as
+`/agent-to-nvim:agent-to-nvim`.
 
-```
-make install-skill
-```
+It hands over the last draft in the conversation, and naming one
+(`/agent-to-nvim:agent-to-nvim the slack message`) picks that instead. Agents also
+reach for it on their own whenever they write a draft headed somewhere outside the
+conversation.
 
-`/agent-to-nvim` then hands over the last draft in the conversation, and
-`/agent-to-nvim the slack message` picks a specific one. Agents also reach for it on
-their own whenever they write a draft headed somewhere outside the conversation.
+## Working on it
 
-The symlink points back at this checkout, so editing `skills/agent-to-nvim/SKILL.md`
-takes effect after `/reload-skills`. `make uninstall-skill` removes the link.
-
-The same skill also loads as a plugin with `claude --plugin-dir .`, where it is
-reachable as `/agent-to-nvim:agent-to-nvim` — use that to try it without touching
-`~/.claude`.
+`make check` runs the tests, the linter, and a comparison of the version in
+`.claude-plugin/plugin.json` against the one in the marketplace entry. Those two have
+to agree: the first keys the install cache and the second is what a reader browsing
+the catalogue sees, so a bump applied to one and not the other looks fine from either
+side alone and breaks the release.
