@@ -102,10 +102,22 @@ agent-to-nvim: draft edited
 @@ line 1 @@
 ~ Launch is on [-Wednesday-]{+Thursday+}.
 note: check that with ops before you post it
+  1  Launch is on Thursday.
+  2  Read the runbook first.
 ```
 
 So stdout is always safe to send as it stands — you never have to strip anything
 out of it yourself.
+
+The two numbered lines under a note are the draft lines it was written between,
+numbered as the text on stdout is. A note usually follows the text it is about, so
+for one like "drop this" or "this line is wrong", read the first of the two — the
+line above the note — as what it refers to.
+
+The lines say where the note was written, not how far it reaches. Plenty of notes
+are about the whole draft, so take the scope from what the note says and use the
+lines to place it. A note at the very top or bottom shows only the one line it has
+beside it.
 
 Each `note:` line is an instruction about the draft. Act on it before doing
 anything with the text:

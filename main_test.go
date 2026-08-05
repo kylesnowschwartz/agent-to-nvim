@@ -24,6 +24,24 @@ func TestAnnounceKeepsNotesOffTheDraft(t *testing.T) {
 	}
 }
 
+// A note points at part of the draft, and its own line is not in the text the
+// agent acts on, so the report places it against the numbered draft lines around
+// it. Without them the agent gets an instruction and no idea what it is about.
+func TestAnnouncePlacesANoteAgainstTheDraft(t *testing.T) {
+	back := readBack(
+		"Hey team.\n\nLaunch is Wednesday.\nRead the runbook.\n",
+		"Hey team.\n\nLaunch is Thursday.\n>> check that with ops\nRead the runbook.\n",
+	)
+
+	var out strings.Builder
+	announce(&out, back, true)
+
+	want := "note: check that with ops\n  3  Launch is Thursday.\n  4  Read the runbook.\n"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", out.String(), want)
+	}
+}
+
 // A note is an instruction, so a draft nobody touched otherwise still has
 // something in it for the agent to do — reporting that as approved-as-is would
 // send the message the note asked to change.

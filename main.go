@@ -7,7 +7,9 @@
 //
 // Stdout carries the draft and nothing else, so a caller can send it as it
 // stands. A line the human starts with ">>" is an aside to the agent rather than
-// draft text, and is reported on stderr instead of being handed on.
+// draft text; it is reported on stderr instead of being handed on, under the
+// numbered draft lines it sits between so the caller can tell which part of the
+// draft it is about.
 //
 // Waiting is bounded so the caller exits on its own terms rather than being
 // killed by whatever timeout wraps it. When the deadline passes, nvim keeps
@@ -22,6 +24,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
@@ -204,7 +207,7 @@ func settle(
 // be reported.
 type handback struct {
 	text   string
-	notes  []string
+	notes  []notes.Note
 	before string
 }
 
@@ -233,9 +236,23 @@ func announce(w io.Writer, back handback, showDiff bool) int {
 		}
 	}
 	for _, note := range back.notes {
-		say(w, "note: %s\n", note)
+		sayNote(w, note)
 	}
 	return exitEdited
+}
+
+// sayNote reports one note under the draft lines it sits between, numbered as the
+// draft on stdout is. The note's own line is gone from that draft, so without the
+// lines either side nothing ties the instruction to the text it is about.
+func sayNote(w io.Writer, note notes.Note) {
+	say(w, "note: %s\n", note.Said)
+	width := len(strconv.Itoa(max(note.Above.Num, note.Below.Num)))
+	for _, line := range []notes.Line{note.Above, note.Below} {
+		if line.Num == 0 {
+			continue
+		}
+		say(w, "  %*d  %s\n", width, line.Num, line.Text)
+	}
 }
 
 // say reports on the outcome. Reporting is best effort: a run whose stderr has
@@ -266,9 +283,13 @@ What the human changed is reported on stderr, marked word by word:
 
 A line the human starts with ">>" is a note to the agent, not part of the draft.
 It is reported on stderr and kept off stdout, so what stdout carries can be sent
-as it stands:
+as it stands. The lines either side of where it was written come with it, numbered
+as the text on stdout is. A note usually follows the text it is about, so the first
+of the two is the likelier referent:
 
   note: make this shorter
+    3  Launch is on Thursday, please read the runbook.
+    4  Ping me if that clashes with anything.
 
 exit codes:
   0   saved with changes
