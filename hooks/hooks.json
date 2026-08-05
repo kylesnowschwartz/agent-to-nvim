@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "agent-to-nvim plan",
-            "timeout": 86400,
+            "timeout": 7200,
             "statusMessage": "Reviewing the plan in nvim"
           }
         ]
