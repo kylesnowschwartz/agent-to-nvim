@@ -96,6 +96,26 @@ An aside usually follows the text it is about, so the line above it is the one i
 most likely refers to. The line below bounds it, and is all there is to show for a
 note written at the very top of a draft.
 
+Some asides are about the draft as a whole rather than any line of it — "too
+formal", "no rollback section anywhere". Those are written with `>>>` and come back
+without lines, since where they were typed says nothing about what they are for:
+
+```
+note (whole draft): this reads too formally all the way through
+```
+
+A run of neighbouring note lines is one note, so a thought too long for one line
+does not arrive as several. Later lines are indented under the first:
+
+```
+note: check that with ops
+      they asked for it twice
+```
+
+A blank line between two notes separates them, which is how to ask for two notes
+about the same place rather than one. A blank marker line inside a run is a
+paragraph break within the one note.
+
 The marker only counts at the start of a line, so an indented `>>` — a nested
 blockquote, a shell redirect in a code block — stays in the draft as text.
 

@@ -42,6 +42,46 @@ func TestAnnouncePlacesANoteAgainstTheDraft(t *testing.T) {
 	}
 }
 
+// A note about the whole draft has no line to be placed against, so the report
+// says which draft it is about instead. Numbering it against whatever line it was
+// typed beside would send the agent to fix one sentence when the note was about
+// all of them.
+func TestAnnounceReportsAWholeDraftNoteWithoutLines(t *testing.T) {
+	back := readBack(
+		"Hey team.\n\nLaunch is Wednesday.\n",
+		"Hey team.\n\nLaunch is Thursday.\n>>> this reads too formally throughout\n",
+	)
+
+	var out strings.Builder
+	announce(&out, back, true)
+
+	want := "note (whole draft): this reads too formally throughout\n"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", out.String(), want)
+	}
+	if strings.Contains(out.String(), "  3  Launch is Thursday.") {
+		t.Errorf("stderr = %q, want no line placed against a whole-draft note", out.String())
+	}
+}
+
+// A note written across several marker lines is one instruction, so its later
+// lines are indented under the first rather than left looking like draft text
+// that followed it.
+func TestAnnounceIndentsTheRestOfAJoinedNote(t *testing.T) {
+	back := readBack(
+		"Launch is Wednesday.\n",
+		"Launch is Thursday.\n>> check that with ops\n>> they asked twice\n",
+	)
+
+	var out strings.Builder
+	announce(&out, back, true)
+
+	want := "note: check that with ops\n      they asked twice\n"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", out.String(), want)
+	}
+}
+
 // A note is an instruction, so a draft nobody touched otherwise still has
 // something in it for the agent to do — reporting that as approved-as-is would
 // send the message the note asked to change.

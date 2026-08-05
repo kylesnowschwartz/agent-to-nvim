@@ -9,7 +9,8 @@
 // stands. A line the human starts with ">>" is an aside to the agent rather than
 // draft text; it is reported on stderr instead of being handed on, under the
 // numbered draft lines it sits between so the caller can tell which part of the
-// draft it is about.
+// draft it is about. ">>>" is an aside about the draft as a whole, reported
+// without any lines because it has no one part to point at.
 //
 // Waiting is bounded so the caller exits on its own terms rather than being
 // killed by whatever timeout wraps it. When the deadline passes, nvim keeps
@@ -25,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
@@ -241,11 +243,23 @@ func announce(w io.Writer, back handback, showDiff bool) int {
 	return exitEdited
 }
 
-// sayNote reports one note under the draft lines it sits between, numbered as the
-// draft on stdout is. The note's own line is gone from that draft, so without the
-// lines either side nothing ties the instruction to the text it is about.
+// noteIndent lines a note's later lines up under its first, so a note written
+// across several marker lines reads as one instruction rather than as loose text
+// beneath it. It is the width of the "note: " label.
+const noteIndent = "      "
+
+// sayNote reports one note. A note about part of the draft comes with the lines
+// it sits between, numbered as the draft on stdout is: the note's own line is
+// gone from that draft, so without them nothing ties the instruction to the text
+// it is about. A note about the whole draft has no such lines, and saying so is
+// what keeps it from being read as being about wherever it was typed.
 func sayNote(w io.Writer, note notes.Note) {
-	say(w, "note: %s\n", note.Said)
+	if note.About == notes.Whole {
+		say(w, "note (whole draft): %s\n", continued(note.Said))
+		return
+	}
+
+	say(w, "note: %s\n", continued(note.Said))
 	width := len(strconv.Itoa(max(note.Above.Num, note.Below.Num)))
 	for _, line := range []notes.Line{note.Above, note.Below} {
 		if line.Num == 0 {
@@ -253,6 +267,11 @@ func sayNote(w io.Writer, note notes.Note) {
 		}
 		say(w, "  %*d  %s\n", width, line.Num, line.Text)
 	}
+}
+
+// continued indents everything after a note's first line.
+func continued(said string) string {
+	return strings.ReplaceAll(said, "\n", "\n"+noteIndent)
 }
 
 // say reports on the outcome. Reporting is best effort: a run whose stderr has
@@ -290,6 +309,13 @@ of the two is the likelier referent:
   note: make this shorter
     3  Launch is on Thursday, please read the runbook.
     4  Ping me if that clashes with anything.
+
+">>>" is a note about the whole draft. It has no one part to point at, so it comes
+back without any lines:
+
+  note (whole draft): this reads too formally all the way through
+
+A run of note lines is one note. Later lines are indented under the first.
 
 exit codes:
   0   saved with changes

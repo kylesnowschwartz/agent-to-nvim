@@ -114,10 +114,24 @@ numbered as the text on stdout is. A note usually follows the text it is about, 
 for one like "drop this" or "this line is wrong", read the first of the two — the
 line above the note — as what it refers to.
 
-The lines say where the note was written, not how far it reaches. Plenty of notes
-are about the whole draft, so take the scope from what the note says and use the
-lines to place it. A note at the very top or bottom shows only the one line it has
-beside it.
+The lines say where the note was written, not how far it reaches. Take the scope
+from what the note says and use the lines to place it. A note at the very top or
+bottom shows only the one line it has beside it.
+
+A note reported as `note (whole draft):` is about all of it and comes with no
+lines, so do not go looking for the part it refers to:
+
+```
+note (whole draft): this reads too formally all the way through
+```
+
+A note written across several lines arrives as one note, with its later lines
+indented. Read it as a single instruction:
+
+```
+note: check that with ops
+      they asked for it twice
+```
 
 Each `note:` line is an instruction about the draft. Act on it before doing
 anything with the text:
