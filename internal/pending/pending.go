@@ -63,8 +63,10 @@ func OpenStore() (*Store, error) {
 		return nil, fmt.Errorf("resolve state directory: %w", err)
 	}
 	store := &Store{dir: dir}
-	if err := os.MkdirAll(store.DraftsDir(), 0o700); err != nil {
-		return nil, fmt.Errorf("create state directory: %w", err)
+	for _, sub := range []string{store.DraftsDir(), store.PlansDir()} {
+		if err := os.MkdirAll(sub, 0o700); err != nil {
+			return nil, fmt.Errorf("create state directory: %w", err)
+		}
 	}
 	return store, nil
 }
@@ -73,6 +75,48 @@ func OpenStore() (*Store, error) {
 // user's own. It is a fixed path so the agent can write straight to it, rather
 // than spending a command on minting a temp directory first.
 func (s *Store) DraftsDir() string { return filepath.Join(s.dir, "drafts") }
+
+// PlansDir is where a plan under review is held while a human reads it.
+func (s *Store) PlansDir() string { return filepath.Join(s.dir, "plans") }
+
+// HoldPlan writes a plan out for review and returns the file to open.
+//
+// The copy is this tool's own. The harness wrote the plan to a file of its own
+// before asking about it, but an approved plan travels back in the answer rather
+// than on disk, so there is nothing to gain by editing the harness's copy and a
+// directory belonging to another tool to keep out of. name is what the plan is
+// called, so the window title and the editor's filetype both say what is being
+// read.
+func (s *Store) HoldPlan(name, plan string) (string, error) {
+	path := filepath.Join(s.PlansDir(), safeName(name)+".md")
+	if err := os.WriteFile(path, []byte(plan), 0o600); err != nil {
+		return "", fmt.Errorf("write the plan out for review: %w", err)
+	}
+	return path, nil
+}
+
+// safeName reduces a name from the harness to something that can only ever be one
+// file inside PlansDir.
+func safeName(name string) string {
+	name = filepath.Base(strings.TrimSuffix(name, ".md"))
+	kept := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, name)
+	kept = strings.Trim(kept, "-")
+
+	if kept == "" {
+		return "plan-under-review"
+	}
+	if len(kept) > 60 {
+		kept = strings.Trim(kept[:60], "-")
+	}
+	return kept
+}
 
 // DropScratch removes a draft that lives in DraftsDir, so a scratch draft does
 // not outlive the handover it was written for and the next handover under the

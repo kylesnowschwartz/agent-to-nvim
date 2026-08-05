@@ -31,6 +31,9 @@ const pollInterval = 250 * time.Millisecond
 type Request struct {
 	// Path is the draft file nvim opens.
 	Path string
+	// EditorArgs go to the editor ahead of the file, for a caller that needs the
+	// session set up a particular way.
+	EditorArgs []string
 	// StartDir is the working directory nvim starts in.
 	StartDir string
 	// Name is the tmux window name.
@@ -80,7 +83,7 @@ func Start(req Request) (*Session, error) {
 	windowID, err := tmuxOutput(
 		"new-window", "-d", "-P", "-F", "#{window_id}",
 		"-c", req.StartDir, "-n", req.Name,
-		"--", "sh", "-c", recordExitCode(editor, req.Path, req.ExitCodeFile),
+		"--", "sh", "-c", recordExitCode(editor, req.EditorArgs, req.Path, req.ExitCodeFile),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("open tmux edit window: %w", err)
@@ -142,10 +145,16 @@ func (s *Session) Wait(ctx context.Context) (int, error) {
 // recordExitCode builds the shell command the window runs: nvim on the draft,
 // then its exit code written to the exit-code file. The write is a temp-file
 // rename so the waiting process never reads a half-written code.
-func recordExitCode(editor, path, exitCodeFile string) string {
+func recordExitCode(editor string, args []string, path, exitCodeFile string) string {
+	open := shellQuote(editor)
+	for _, arg := range args {
+		open += " " + shellQuote(arg)
+	}
+	open += " " + shellQuote(path)
+
 	return fmt.Sprintf(
-		`%s %s; rc=$?; printf '%%s' "$rc" > %s.tmp && mv -f %s.tmp %s`,
-		shellQuote(editor), shellQuote(path),
+		`%s; rc=$?; printf '%%s' "$rc" > %s.tmp && mv -f %s.tmp %s`,
+		open,
 		shellQuote(exitCodeFile), shellQuote(exitCodeFile), shellQuote(exitCodeFile),
 	)
 }

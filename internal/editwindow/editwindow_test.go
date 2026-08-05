@@ -28,7 +28,7 @@ func TestShellQuoteKeepsMetacharactersLiteral(t *testing.T) {
 }
 
 func TestRecordExitCodeQuotesEveryPath(t *testing.T) {
-	command := recordExitCode("/usr/bin/nvim", "/tmp/it's a draft.md", "/tmp/done-1")
+	command := recordExitCode("/usr/bin/nvim", nil, "/tmp/it's a draft.md", "/tmp/done-1")
 	for _, want := range []string{`'/usr/bin/nvim'`, `'/tmp/it'\''s a draft.md'`, `'/tmp/done-1'`} {
 		if !strings.Contains(command, want) {
 			t.Errorf("command %q is missing quoted %s", command, want)
@@ -36,6 +36,18 @@ func TestRecordExitCodeQuotesEveryPath(t *testing.T) {
 	}
 	if !strings.Contains(command, `mv -f '/tmp/done-1'.tmp '/tmp/done-1'`) {
 		t.Errorf("command %q does not write the exit code through a rename", command)
+	}
+}
+
+// Editor arguments go ahead of the file and are quoted like everything else: they
+// carry paths of their own, and nvim reads the file it is given last.
+func TestRecordExitCodePutsEditorArgumentsBeforeTheFile(t *testing.T) {
+	command := recordExitCode("/usr/bin/nvim",
+		[]string{"-S", "/tmp/setup dir/review.lua"}, "/tmp/plan.md", "/tmp/done-1")
+
+	want := `'/usr/bin/nvim' '-S' '/tmp/setup dir/review.lua' '/tmp/plan.md'`
+	if !strings.Contains(command, want) {
+		t.Errorf("command %q does not open the editor as %q", command, want)
 	}
 }
 

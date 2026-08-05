@@ -232,6 +232,96 @@ func TestDropScratchKeepsADraftFromAnywhereElse(t *testing.T) {
 	}
 }
 
+func TestHoldPlanWritesThePlanUnderTheStoresOwnDirectory(t *testing.T) {
+	store, dir := openTestStore(t)
+	plan := "# Launch\n\nShip on Thursday.\n"
+
+	path, err := store.HoldPlan("/Users/someone/.claude/plans/tidy-launch.md", plan)
+	if err != nil {
+		t.Fatalf("HoldPlan: %v", err)
+	}
+
+	if want := filepath.Join(dir, "plans"); filepath.Dir(path) != want {
+		t.Errorf("plan held at %q, want it under %q", path, want)
+	}
+	if want := "tidy-launch.md"; filepath.Base(path) != want {
+		t.Errorf("plan named %q, want %q so the window title says what it is", filepath.Base(path), want)
+	}
+	held, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the held plan: %v", err)
+	}
+	if string(held) != plan {
+		t.Errorf("held plan = %q, want %q", held, plan)
+	}
+}
+
+// The name comes from the harness, so it can only ever land on one file inside
+// PlansDir however it is spelled.
+func TestHoldPlanCannotBeAimedOutOfThePlansDirectory(t *testing.T) {
+	store, dir := openTestStore(t)
+	plans := filepath.Join(dir, "plans")
+
+	for _, name := range []string{
+		"../../../etc/passwd",
+		"/absolute/elsewhere.md",
+		"..",
+		"",
+		"  ",
+		"plan/../../escape.md",
+	} {
+		path, err := store.HoldPlan(name, "# Launch\n")
+		if err != nil {
+			t.Fatalf("HoldPlan(%q): %v", name, err)
+		}
+		if filepath.Dir(path) != plans {
+			t.Errorf("HoldPlan(%q) landed at %q, want it inside %q", name, path, plans)
+		}
+	}
+}
+
+// A plan reviewed twice is the same plan being worked on, so its copy is replaced
+// rather than piling up one file per revision.
+func TestHoldPlanReplacesAnEarlierCopyOfTheSamePlan(t *testing.T) {
+	store, _ := openTestStore(t)
+
+	first, err := store.HoldPlan("launch.md", "# Launch\n\nThursday.\n")
+	if err != nil {
+		t.Fatalf("HoldPlan: %v", err)
+	}
+	second, err := store.HoldPlan("launch.md", "# Launch\n\nFriday.\n")
+	if err != nil {
+		t.Fatalf("HoldPlan: %v", err)
+	}
+	if first != second {
+		t.Errorf("second review held at %q, want the same file as %q", second, first)
+	}
+
+	held, err := os.ReadFile(second)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if want := "# Launch\n\nFriday.\n"; string(held) != want {
+		t.Errorf("held plan = %q, want the revision %q", held, want)
+	}
+}
+
+func TestSafeNameKeepsAReadableNameReadable(t *testing.T) {
+	for name, want := range map[string]string{
+		"tidy-launch-plan.md": "tidy-launch-plan",
+		"peppy_cooking_wave":  "peppy_cooking_wave",
+		"plan with spaces.md": "plan-with-spaces",
+		"../weird/../name.md": "name",
+		"":                    "plan-under-review",
+		"!!!":                 "plan-under-review",
+		"café-launch":         "caf--launch",
+	} {
+		if got := safeName(name); got != want {
+			t.Errorf("safeName(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
 func openTestStore(t *testing.T) (store *Store, dir string) {
 	t.Helper()
 	base := t.TempDir()

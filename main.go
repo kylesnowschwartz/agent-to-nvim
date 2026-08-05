@@ -33,6 +33,8 @@ import (
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/editwindow"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/notes"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/pending"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/planhook"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/planwindow"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/textdiff"
 )
 
@@ -44,6 +46,10 @@ const (
 	exitUnchanged = 10 // saved byte-identical — the draft was approved as-is
 	exitAborted   = 20 // discarded via :cq or a killed window — do not proceed
 	exitStillOpen = 30 // deadline passed, still being edited — collect it
+
+	// exitAnswered is the plan review's only success. It answers Claude Code in
+	// what it writes rather than in how it exits, so the verdict is not here.
+	exitAnswered = 0
 )
 
 func main() {
@@ -66,20 +72,28 @@ func run(args []string) int {
 		"how long to wait before handing back a collect id; 0 waits indefinitely")
 	diff := flags.Bool("diff", true, "report what changed on stderr")
 
-	collecting := len(args) > 0 && args[0] == "collect"
-	if collecting {
-		args = args[1:]
+	command := ""
+	if len(args) > 0 && (args[0] == "collect" || args[0] == "plan") {
+		command, args = args[0], args[1:]
 	}
 	if err := flags.Parse(args); err != nil {
 		return exitFailed
 	}
+
+	set := settings{focus: *focus, deadline: *deadline, diff: *diff}
+	if command == "plan" {
+		if flags.NArg() != 0 {
+			usage()
+			return exitFailed
+		}
+		return reviewPlan(set)
+	}
+
 	if flags.NArg() != 1 {
 		usage()
 		return exitFailed
 	}
-
-	set := settings{focus: *focus, deadline: *deadline, diff: *diff}
-	if collecting {
+	if command == "collect" {
 		return report(collect(flags.Arg(0), set))
 	}
 	return report(hand(flags.Arg(0), set))
@@ -152,6 +166,124 @@ func collect(id string, set settings) (int, error) {
 		return 0, err
 	}
 	return settle(store, edit, draft.Reopen(edit.DraftPath, original), session, set)
+}
+
+// reviewPlan answers Claude Code's request to leave plan mode: it hands the plan
+// to a human and turns what they did with it into the answer.
+//
+// Waiting is unbounded. The answer has to be written by this process, so unlike a
+// draft handover there is nobody to hand a deadline over to — no collect can
+// answer on its behalf. Claude Code's own hook timeout bounds it instead, and a
+// review it gives up waiting for falls back to Claude Code asking about the plan
+// itself.
+func reviewPlan(set settings) int {
+	event, err := planhook.ReadEvent(os.Stdin)
+	if errors.Is(err, planhook.ErrNothingAsked) {
+		return exitAnswered
+	}
+	if err != nil {
+		return standDown(err)
+	}
+
+	review, err := readPlan(event, set)
+	if err != nil {
+		return standDown(err)
+	}
+	if err := review.Answer(event.ToolInput).Send(os.Stdout); err != nil {
+		return standDown(err)
+	}
+	return exitAnswered
+}
+
+// standDown reports why a review could not run and leaves the answer unwritten, so
+// Claude Code asks about the plan its own way rather than acting on a verdict
+// nobody gave.
+//
+// Exit 1 rather than 2: a blocking error would turn the plan down on the reviewer's
+// behalf, and a plan nobody managed to look at has not been turned down.
+func standDown(err error) int {
+	fmt.Fprintf(os.Stderr, "agent-to-nvim: %v\n", err)
+	return exitFailed
+}
+
+// readPlan holds the plan open until the human is done with it, and reports what
+// they left behind.
+//
+// The plan is read back whether they saved or not. Quitting with a failure is how a
+// plan gets sent back to be revised, and the notes saying why are in the file — so
+// unlike a discarded draft, which is simply not used, a discarded plan still has
+// something in it to answer.
+func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
+	store, err := pending.OpenStore()
+	if err != nil {
+		return planhook.Review{}, err
+	}
+	path, err := store.HoldPlan(event.PlanFile(), event.Plan())
+	if err != nil {
+		return planhook.Review{}, err
+	}
+	keys, err := planwindow.Args(store.PlansDir())
+	if err != nil {
+		return planhook.Review{}, err
+	}
+
+	// A code left behind by a review nobody finished would read as this one being
+	// over the instant it opens.
+	recorded := path + ".rc"
+	_ = os.Remove(recorded)
+
+	session, err := editwindow.Start(editwindow.Request{
+		Path:         path,
+		EditorArgs:   keys,
+		StartDir:     startDir(event),
+		Name:         "plan: " + strings.TrimSuffix(filepath.Base(path), ".md"),
+		ExitCodeFile: recorded,
+		Focus:        set.focus,
+	})
+	if err != nil {
+		return planhook.Review{}, err
+	}
+
+	editorCode, err := session.Wait(context.Background())
+	if err != nil && !errors.Is(err, editwindow.ErrWindowClosed) {
+		return planhook.Review{}, err
+	}
+	// A killed window is not an approval, but anything saved before it went is
+	// still the reviewer's and still worth reading.
+	saved := err == nil && editorCode == 0
+
+	reviewed, err := os.ReadFile(path)
+	if err != nil {
+		return planhook.Review{}, fmt.Errorf("read the reviewed plan: %w", err)
+	}
+	plan, left := notes.Split(string(reviewed))
+
+	if saved {
+		// An approved plan travels back inside the answer, so the copy has nothing
+		// left to hold. A plan sent back keeps its copy: the reviewer's own wording
+		// is in it and only an account of it goes back.
+		_ = os.Remove(path)
+	}
+
+	return planhook.Review{
+		Approved:  saved,
+		Plan:      plan,
+		Submitted: event.Plan(),
+		Notes:     left,
+	}, nil
+}
+
+// startDir is where the editor opens, so a file named in the plan can be followed
+// straight out of it.
+func startDir(event planhook.Event) string {
+	if event.Cwd != "" {
+		return event.Cwd
+	}
+	here, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return here
 }
 
 // settle waits for the edit to finish and turns the result into an exit code.
