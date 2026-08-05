@@ -17,11 +17,43 @@ $ echo $?
 
 ## Install
 
+Two steps, because the plugin carries the wiring and the binary does the work.
+
 ```
 go install github.com/kylesnowschwartz/agent-to-nvim@latest
 ```
 
-Requires tmux and nvim on `PATH`.
+```
+/plugin marketplace add kylesnowschwartz/agent-to-nvim
+/plugin install agent-to-nvim@agent-to-nvim
+```
+
+That registers the plan-review hook and the drafting skill together. Restart Claude
+Code once and both are live.
+
+Requires tmux and nvim on `PATH`, and the binary on `PATH` too — the hook runs
+`agent-to-nvim plan` by name. Without it the hook fails and Claude Code falls back
+to asking about the plan itself, so a missing binary costs the review rather than
+the session.
+
+Working on the plugin itself is the same two steps against the checkout:
+
+```
+make install
+/plugin marketplace add .
+/plugin install agent-to-nvim@agent-to-nvim
+```
+
+A marketplace on a path is read from a copy taken at install time, not from the
+checkout, and `/plugin update` refuses to re-copy while the version is unchanged. So
+a change to the hook or the skill reaches Claude Code on a reinstall:
+
+```
+/plugin uninstall agent-to-nvim@agent-to-nvim
+/plugin install agent-to-nvim@agent-to-nvim
+```
+
+The Go side has no such gap — `make install` is live immediately.
 
 ## Usage
 
@@ -233,34 +265,17 @@ Code to ask about the plan its own way rather than acting on a verdict nobody ga
 
 ### Wiring it up
 
-As a plugin, `hooks/hooks.json` wires it to Claude Code's plan-approval request:
+Installing the plugin (see [Install](#install)) registers the hook against Claude
+Code's plan-approval request. There is nothing to add to `settings.json` by hand,
+and adding it there as well would answer the same request twice.
 
-```
-claude --plugin-dir .
-```
+`hooks/hooks.json` gives Claude Code a day to wait, which is longer than any review
+takes. Closing the window ends a review you have lost interest in, so only a review
+nobody closes runs that time down.
 
-Or add it to `~/.claude/settings.json` to have it on in every session:
-
-```json
-{
-  "hooks": {
-    "PermissionRequest": [
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [{ "type": "command", "command": "agent-to-nvim plan", "timeout": 86400 }]
-      }
-    ]
-  }
-}
-```
-
-The timeout is how long Claude Code waits, so it wants to be longer than a review
-takes. Closing the window ends a review you have lost interest in, and only a
-review nobody closes runs the timeout down.
-
-Anything else answering the same request will race this one — two windows, two
-answers, and whichever lands first wins. Turn off any other plan-review tool
-before wiring this in.
+Anything else answering the same request races this one — two windows, two answers,
+and whichever lands first wins. Turn off any other plan-review tool before
+installing.
 
 ## Claude Code skill
 
