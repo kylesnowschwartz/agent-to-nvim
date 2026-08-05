@@ -7,9 +7,9 @@
 //
 // Stdout carries the draft and nothing else, so a caller can send it as it
 // stands. A line the human starts with ">>" is an aside to the agent rather than
-// draft text; it is reported on stderr instead of being handed on, under the
-// numbered draft lines it sits between so the caller can tell which part of the
-// draft it is about.
+// draft text; it is reported on stderr instead of being handed on, sitting in a
+// quote of the numbered draft where it was written, so the caller can tell which
+// part of the draft it is about.
 //
 // Waiting is bounded so the caller exits on its own terms rather than being
 // killed by whatever timeout wraps it. When the deadline passes, nvim keeps
@@ -24,11 +24,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/editwindow"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/notereport"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/notes"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/pending"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/textdiff"
@@ -223,35 +223,36 @@ func readBack(original, current string) handback {
 // nothing came back to act on, so a draft left word for word alone but annotated
 // counts as edited: the notes are the edit.
 func announce(w io.Writer, back handback, showDiff bool) int {
-	switch {
-	case back.text == back.before && len(back.notes) == 0:
+	if back.text == back.before && len(back.notes) == 0 {
 		say(w, "agent-to-nvim: draft saved unchanged\n")
 		return exitUnchanged
-	case back.text == back.before:
-		say(w, "agent-to-nvim: draft text unchanged, with notes\n")
-	default:
-		say(w, "agent-to-nvim: draft edited\n")
-		if showDiff {
-			say(w, "%s", textdiff.Unified(back.before, back.text))
-		}
 	}
-	for _, note := range back.notes {
-		sayNote(w, note)
+
+	say(w, "agent-to-nvim: %s\n", outcome(back))
+	if back.text != back.before && showDiff {
+		say(w, "%s", textdiff.Unified(back.before, back.text))
+	}
+	if len(back.notes) > 0 {
+		say(w, "\n%s", notereport.Render(back.notes))
 	}
 	return exitEdited
 }
 
-// sayNote reports one note under the draft lines it sits between, numbered as the
-// draft on stdout is. The note's own line is gone from that draft, so without the
-// lines either side nothing ties the instruction to the text it is about.
-func sayNote(w io.Writer, note notes.Note) {
-	say(w, "note: %s\n", note.Said)
-	width := len(strconv.Itoa(max(note.Above.Num, note.Below.Num)))
-	for _, line := range []notes.Line{note.Above, note.Below} {
-		if line.Num == 0 {
-			continue
-		}
-		say(w, "  %*d  %s\n", width, line.Num, line.Text)
+// outcome says what came back, counting the notes. The count sits with the outcome
+// rather than at the head of the notes section, where a number would read as one
+// of the draft line numbers under it.
+func outcome(back handback) string {
+	what := "draft edited"
+	if back.text == back.before {
+		what = "draft text unchanged"
+	}
+	switch len(back.notes) {
+	case 0:
+		return what
+	case 1:
+		return what + ", 1 note"
+	default:
+		return fmt.Sprintf("%s, %d notes", what, len(back.notes))
 	}
 }
 
@@ -283,13 +284,18 @@ What the human changed is reported on stderr, marked word by word:
 
 A line the human starts with ">>" is a note to the agent, not part of the draft.
 It is reported on stderr and kept off stdout, so what stdout carries can be sent
-as it stands. The lines either side of where it was written come with it, numbered
-as the text on stdout is. A note usually follows the text it is about, so the first
-of the two is the likelier referent:
+as it stands. Each note is reported inside a quote of the draft around it, marked
+">>" in the margin and sitting where it was written. The quoted lines are numbered
+as the text on stdout is. A note usually follows the text it is about, so the line
+above it is the likelier referent:
 
-  note: make this shorter
-    3  Launch is on Thursday, please read the runbook.
-    4  Ping me if that clashes with anything.
+  notes:
+     3  Launch is on Thursday, please read the runbook.
+  >> make this shorter
+     4  Ping me if that clashes with anything.
+
+The lines say where a note was written, not how far it reaches — plenty of notes
+are about the whole draft.
 
 exit codes:
   0   saved with changes

@@ -78,23 +78,38 @@ and kept off stdout, so what stdout carries can be sent as it stands:
 
 ```
 $ agent-to-nvim announcement.md
-agent-to-nvim: draft edited
+agent-to-nvim: draft edited, 2 notes
 @@ line 1 @@
-~ Launch is on [-Wednesday-]{+Thursday+}.
-note: check that with ops before you post it
-  1  Launch is on Thursday.
-  2  Read the runbook first.
+~ Launch is on [-Wednesday.-]{+Thursday.+}
+  Read the runbook first.
+
+notes:
+   1  Launch is on Thursday.
+>> check that with ops before you post it
+   2  Read the runbook first.
+>> link the runbook?
+   3  Ping me if that clashes.
 ```
 
-An aside is written about a particular part of the draft, so the lines either side
-of it come with it. They are numbered as the text on stdout is — the aside's own
-line is not in that text, so counting it would point at the wrong line. The nearest
-line with text on it is used on each side, since a note written under a paragraph
-usually has an empty line above it.
+An aside is written about a particular part of the draft, so the draft around it
+comes with it. Every stretch of the draft carrying asides is quoted once, numbered
+as the text on stdout is — an aside's own line is not in that text, so counting it
+would point at the wrong line. Each aside sits where it was written, marked `>>`
+in the margin while draft lines are indented past it, so the margin alone tells the
+two apart.
+
+Asides written into the same stretch of the draft share one quote of it, and a line
+between two of them is one line of the report. Asides written somewhere else start
+another quote, separated by a blank line.
 
 An aside usually follows the text it is about, so the line above it is the one it
-most likely refers to. The line below bounds it, and is all there is to show for a
-note written at the very top of a draft.
+most likely refers to. Blank lines are stepped over, since an aside written under a
+paragraph usually has an empty line above it. The quoted lines say where an aside
+was written, not how far it reaches — plenty of asides are about the whole draft.
+
+The count of asides is on the outcome line rather than at the head of the section,
+where a number would sit above the draft line numbers and read as one of them. What
+an aside says is never abbreviated: it is the only place the instruction exists.
 
 The marker only counts at the start of a line, so an indented `>>` — a nested
 blockquote, a shell redirect in a code block — stays in the draft as text.
