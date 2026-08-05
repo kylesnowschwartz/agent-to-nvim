@@ -1,0 +1,18 @@
+{
+  "description": "Hand a plan to nvim for review before Claude Code acts on it",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-to-nvim plan",
+            "timeout": 86400,
+            "statusMessage": "Reviewing the plan in nvim"
+          }
+        ]
+      }
+    ]
+  }
+}

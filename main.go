@@ -418,10 +418,18 @@ func usage() {
 
 usage: agent-to-nvim [flags] <file>
        agent-to-nvim collect [flags] <id>
+       agent-to-nvim plan [flags]
 
 Opens <file> in nvim in a new tmux window, blocks until the edit finishes, and
 prints the resulting text on stdout. If the deadline passes first, nvim keeps
 running and the printed id resumes the same edit.
+
+"plan" is Claude Code's plan-review hook. It reads the request to leave plan mode
+on stdin, opens the plan in nvim, and writes the answer on stdout. In that window
+<leader>a carries the plan out, <leader>r sends it back to be revised, and
+<leader>n and <leader>N open a note about this part of the plan or all of it. The
+window says so along the top. Waiting is unbounded there — Claude Code's own hook
+timeout is what bounds it.
 
 What the human changed is reported on stderr, marked word by word:
 

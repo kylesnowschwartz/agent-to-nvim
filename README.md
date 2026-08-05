@@ -28,7 +28,11 @@ Requires tmux and nvim on `PATH`.
 ```
 agent-to-nvim [flags] <file>
 agent-to-nvim collect [flags] <id>
+agent-to-nvim plan [flags]
 ```
+
+`plan` is the Claude Code plan-review hook — see [Reviewing a
+plan](#reviewing-a-plan). The rest of this describes handing a draft over.
 
 The file is edited in place, so an edit to a real project file is saved where it
 belongs. Agents should write the draft with a file tool and pass the path rather
@@ -170,6 +174,87 @@ finishes the edit, however many times it takes.
 A tmux window rather than a `display-popup` because the window is owned by the tmux
 server: an SSH drop or an expired VPN leaves nvim running, and reattaching brings
 the edit back.
+
+## Reviewing a plan
+
+Claude Code asks before it acts on a plan, and it waits on a hook for the answer.
+`agent-to-nvim plan` is that hook: the plan opens in nvim, and what the reader does
+with it becomes the answer.
+
+```
+agent-to-nvim plan   # reads the request on stdin, writes the answer on stdout
+```
+
+Two keys are the whole verdict, and both are spelled out along the top of the
+window so there is nothing to remember:
+
+| Key | What it means |
+| --- | --- |
+| `<leader>a` | Carry this plan out. |
+| `<leader>r` | Send it back to be revised. |
+| `<leader>n` | Open a note about this part of the plan. |
+| `<leader>N` | Open a note about the whole plan. |
+
+`:Approve` and `:Revise` do the same as the first two. Under them they are just
+saving and quitting — `:wq` approves and `:cq` sends the plan back — so the keys
+are a convenience rather than a requirement.
+
+Notes travel either way, and which key you pressed decides what they are for:
+
+- **Approved with notes** — the notes go into the plan under a `## Notes from the
+  review` heading, saying plainly that they are guidance for the work rather than a
+  reason to plan again. An approval carries the plan and nothing else, so the plan
+  is the only place a note can go and still be read.
+- **Sent back with notes** — the notes become the revision brief, along with a
+  word-marked account of anything you rewrote.
+- **Sent back with nothing** — the answer says you turned the plan down without
+  saying why, and asks rather than guessing at a new one.
+
+Editing the plan and approving it carries out **your** version: the approval hands
+back the text you left, not the text the agent submitted. So a plan that is nearly
+right is faster to fix than to explain.
+
+The plan is reviewed as a copy under `~/.local/state/agent-to-nvim/plans/`. Claude
+Code writes the plan to a file of its own first, but an approved plan travels back
+inside the answer rather than on disk, so there is nothing to gain by editing that
+file and a directory belonging to another tool to keep out of. A copy is dropped
+once its plan is approved and kept when the plan was sent back, since the wording
+you wrote is in it and only an account of it went back.
+
+Nothing is written on stdout unless there is an answer to give. A review that
+cannot run — no tmux, no nvim — says why on stderr and exits 1, which leaves Claude
+Code to ask about the plan its own way rather than acting on a verdict nobody gave.
+
+### Wiring it up
+
+As a plugin, `hooks/hooks.json` wires it to Claude Code's plan-approval request:
+
+```
+claude --plugin-dir .
+```
+
+Or add it to `~/.claude/settings.json` to have it on in every session:
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [{ "type": "command", "command": "agent-to-nvim plan", "timeout": 86400 }]
+      }
+    ]
+  }
+}
+```
+
+The timeout is how long Claude Code waits, so it wants to be longer than a review
+takes. Closing the window ends a review you have lost interest in, and only a
+review nobody closes runs the timeout down.
+
+Anything else answering the same request will race this one — two windows, two
+answers, and whichever lands first wins. Turn off any other plan-review tool
+before wiring this in.
 
 ## Claude Code skill
 
