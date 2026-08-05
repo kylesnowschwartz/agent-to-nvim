@@ -1,11 +1,11 @@
 {
   "name": "agent-to-nvim",
-  "version": "0.1.0",
-  "description": "Hand a draft to a human in nvim and wait for the edited version before continuing",
+  "version": "0.2.0",
+  "description": "Review a plan and edit a draft in nvim: plan mode opens in a tmux window instead of a browser, and a draft headed anywhere outside the conversation is handed over the same way",
   "author": {
     "name": "Kyle Snow Schwartz",
     "url": "https://github.com/kylesnowschwartz"
   },
   "repository": "https://github.com/kylesnowschwartz/agent-to-nvim",
-  "keywords": ["nvim", "tmux", "drafting", "human-in-the-loop"]
+  "keywords": ["nvim", "tmux", "drafting", "plan-review", "ExitPlanMode", "human-in-the-loop"]
 }
