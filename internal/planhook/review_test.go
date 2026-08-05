@@ -107,16 +107,17 @@ func TestAnApprovalDoesNotWidenWhatTheSessionMayDoOnItsOwn(t *testing.T) {
 	}
 }
 
-// Approving without staying to watch says not to ask about each edit the plan
-// leads to, which is the second answer Claude Code's own dialog offers.
-func TestApprovingUnwatchedStopsTheSessionAskingAboutEachEdit(t *testing.T) {
+// Approving without staying to watch says to carry the plan out without stopping
+// to ask, and the mode has to be the one Claude Code's own dialog switches to —
+// approving here and approving there leave the session in the same place.
+func TestApprovingUnwatchedLetsTheWorkRunWithoutAsking(t *testing.T) {
 	plan := "# Launch\n"
-	got := answerFor(Review{Approved: true, Plan: plan, Submitted: plan, AcceptEdits: true})
+	got := answerFor(Review{Approved: true, Plan: plan, Submitted: plan, Unwatched: true})
 
 	if got.Behavior != "allow" {
 		t.Errorf("behavior = %q, want allow", got.Behavior)
 	}
-	want := []permission{{Type: "setMode", Mode: "acceptEdits", Destination: "session"}}
+	want := []permission{{Type: "setMode", Mode: "auto", Destination: "session"}}
 	if !reflect.DeepEqual(got.Permissions, want) {
 		t.Errorf("permissions = %+v, want %+v", got.Permissions, want)
 	}
@@ -126,7 +127,7 @@ func TestApprovingUnwatchedStopsTheSessionAskingAboutEachEdit(t *testing.T) {
 // being carried out, so there is nothing to stop asking about.
 func TestARefusalNeverWidensWhatTheSessionMayDo(t *testing.T) {
 	plan := "# Launch\n"
-	got := answerFor(Review{Approved: false, Plan: plan, Submitted: plan, AcceptEdits: true})
+	got := answerFor(Review{Approved: false, Plan: plan, Submitted: plan, Unwatched: true})
 
 	if got.Behavior != "deny" {
 		t.Errorf("behavior = %q, want deny", got.Behavior)

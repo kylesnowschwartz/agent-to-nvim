@@ -223,7 +223,7 @@ along the top so there is nothing to remember:
 | Key | What it means |
 | --- | --- |
 | `<leader>a` | Carry this plan out. |
-| `<leader>A` | Carry it out without being asked about each edit. |
+| `<leader>A` | Carry it out unwatched, asking you nothing. |
 | `<leader>r` | Send it back to be revised. |
 | `<leader>n` | Open a note about this part of the plan. |
 | `<leader>N` | Open a note about the whole plan. |
@@ -232,10 +232,10 @@ along the top so there is nothing to remember:
 they are just saving and quitting — `:wq` approves and `:cq` sends the plan back —
 so the keys are a convenience rather than a requirement.
 
-`<leader>A` is for approving and walking away. It puts the session into
-accept-edits mode for the rest of its life, which is the same second answer Claude
-Code's own dialog offers, so the work runs to the end without stopping to ask.
-`<leader>a` leaves the session in whatever mode it was already in.
+`<leader>A` is for approving and walking away. It switches the session to auto mode
+for the rest of its life — the same mode Claude Code's own dialog switches to — so
+the work runs to the end without stopping to ask. `<leader>a` leaves the session in
+whatever mode it was already in, which is the one to use if you want to watch.
 
 Notes travel either way, and which key you pressed decides what they are for:
 

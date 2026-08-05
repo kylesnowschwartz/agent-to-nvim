@@ -117,17 +117,18 @@ func Allow(plan string, submitted map[string]any) Decision {
 	}}
 }
 
-// AcceptingEdits returns the approval with the session switched to accepting
-// edits, so a reviewer who approved and walked away is not asked about each one.
+// RunUnwatched returns the approval with the session switched to the mode that
+// carries work out without stopping to ask, so a reviewer who approved and walked
+// away comes back to a finished plan rather than a waiting prompt.
 //
 // Approving a plan does not otherwise widen anything: the session lands in the
-// mode it was already in. Claude Code's own approval dialog offers this as its
-// second answer, and without it a plan approved here is followed by a prompt per
-// edit.
-func (d Decision) AcceptingEdits() Decision {
+// mode it was already in. This is the same mode Claude Code's own approval dialog
+// switches to, which is the point — an approval given here and an approval given
+// there leave the session in the same place.
+func (d Decision) RunUnwatched() Decision {
 	d.Output.Verdict.Permissions = append(d.Output.Verdict.Permissions, permission{
 		Type:        "setMode",
-		Mode:        "acceptEdits",
+		Mode:        "auto",
 		Destination: "session",
 	})
 	return d

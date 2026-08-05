@@ -24,10 +24,10 @@ type Review struct {
 	Submitted string
 	// Notes are the asides they left in it.
 	Notes []notes.Note
-	// AcceptEdits is whether they approved without staying to watch, and so do
-	// not want to be asked about each edit the plan leads to. It only means
-	// anything alongside an approval.
-	AcceptEdits bool
+	// Unwatched is whether they approved and left rather than staying to watch,
+	// and so do not want the work stopping to ask them about itself. It only
+	// means anything alongside an approval.
+	Unwatched bool
 }
 
 // Changed reports whether the human rewrote any of the plan itself.
@@ -41,8 +41,8 @@ func (r Review) Answer(submitted map[string]any) Decision {
 	}
 
 	approval := Allow(r.approvedPlan(), submitted)
-	if r.AcceptEdits {
-		approval = approval.AcceptingEdits()
+	if r.Unwatched {
+		approval = approval.RunUnwatched()
 	}
 	return approval
 }

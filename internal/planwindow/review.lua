@@ -22,10 +22,10 @@ end
 -- Approving and then walking away is a second answer, and it is written down
 -- beside the plan rather than carried in the exit code. An editor that crashes
 -- exits how it likes, and none of those ways may read as "approve and stop asking
--- about edits" — so the wider answer is the one that has to be said explicitly,
--- and its absence is the narrower one.
+-- me about the work" — so the wider answer is the one that has to be said
+-- explicitly, and its absence is the narrower one.
 local function leave_unwatched()
-  local marked = io.open(vim.api.nvim_buf_get_name(plan) .. ".accept-edits", "w")
+  local marked = io.open(vim.api.nvim_buf_get_name(plan) .. ".unwatched", "w")
   if not marked then return end
   marked:write("yes")
   marked:close()
@@ -42,7 +42,7 @@ end
 
 vim.api.nvim_buf_create_user_command(plan, "Approve", function(cmd)
   approve(cmd.bang)
-end, { bang = true, desc = "carry this plan out; with ! do not ask about each edit" })
+end, { bang = true, desc = "carry this plan out; with ! carry it out unwatched" })
 
 vim.api.nvim_buf_create_user_command(plan, "Revise", function()
   vim.cmd("write")
@@ -51,7 +51,7 @@ end, { desc = "send the plan back to be revised" })
 
 local keys = {
   { "<leader>a", "<Cmd>Approve<CR>", "carry this plan out" },
-  { "<leader>A", "<Cmd>Approve!<CR>", "carry it out without asking about each edit" },
+  { "<leader>A", "<Cmd>Approve!<CR>", "carry it out unwatched, asking nothing" },
   { "<leader>r", "<Cmd>Revise<CR>", "send the plan back to be revised" },
   { "<leader>n", function() note(">>") end, "note about this part of the plan" },
   { "<leader>N", function() note(">>>") end, "note about the whole plan" },
@@ -63,7 +63,7 @@ end
 vim.opt_local.winbar = table.concat({
   "  plan review",
   "<leader>a approve",
-  "<leader>A approve, don't ask",
+  "<leader>A approve, unwatched",
   "<leader>r revise",
   "<leader>n note here",
   "<leader>N note on all of it",
