@@ -24,10 +24,10 @@ type Review struct {
 	Submitted string
 	// Notes are the asides they left in it.
 	Notes []notes.Note
-	// Unwatched is whether they approved and left rather than staying to watch,
-	// and so do not want the work stopping to ask them about itself. It only
-	// means anything alongside an approval.
-	Unwatched bool
+	// Auto is whether they approved into auto mode, where the work runs start to
+	// finish without stopping to have each step confirmed. It only means
+	// anything alongside an approval.
+	Auto bool
 }
 
 // Changed reports whether the human rewrote any of the plan itself.
@@ -41,8 +41,8 @@ func (r Review) Answer(submitted map[string]any) Decision {
 	}
 
 	approval := Allow(r.approvedPlan(), submitted)
-	if r.Unwatched {
-		approval = approval.RunUnwatched()
+	if r.Auto {
+		approval = approval.InAutoMode()
 	}
 	return approval
 }

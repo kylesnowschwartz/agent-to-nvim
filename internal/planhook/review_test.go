@@ -107,12 +107,12 @@ func TestAnApprovalDoesNotWidenWhatTheSessionMayDoOnItsOwn(t *testing.T) {
 	}
 }
 
-// Approving without staying to watch says to carry the plan out without stopping
-// to ask, and the mode has to be the one Claude Code's own dialog switches to —
+// Approving into auto mode carries the plan out without stopping to have each step
+// confirmed, and the mode has to be the one Claude Code's own dialog offers —
 // approving here and approving there leave the session in the same place.
-func TestApprovingUnwatchedLetsTheWorkRunWithoutAsking(t *testing.T) {
+func TestApprovingIntoAutoModeLetsTheWorkRunUnconfirmed(t *testing.T) {
 	plan := "# Launch\n"
-	got := answerFor(Review{Approved: true, Plan: plan, Submitted: plan, Unwatched: true})
+	got := answerFor(Review{Approved: true, Plan: plan, Submitted: plan, Auto: true})
 
 	if got.Behavior != "allow" {
 		t.Errorf("behavior = %q, want allow", got.Behavior)
@@ -127,7 +127,7 @@ func TestApprovingUnwatchedLetsTheWorkRunWithoutAsking(t *testing.T) {
 // being carried out, so there is nothing to stop asking about.
 func TestARefusalNeverWidensWhatTheSessionMayDo(t *testing.T) {
 	plan := "# Launch\n"
-	got := answerFor(Review{Approved: false, Plan: plan, Submitted: plan, Unwatched: true})
+	got := answerFor(Review{Approved: false, Plan: plan, Submitted: plan, Auto: true})
 
 	if got.Behavior != "deny" {
 		t.Errorf("behavior = %q, want deny", got.Behavior)

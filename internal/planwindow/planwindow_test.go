@@ -58,7 +58,7 @@ func TestArgsRewritesTheSetupOverAStaleOne(t *testing.T) {
 // it has to bind every answer and say so where they will see it.
 func TestTheSetupOffersEveryAnswerAndBothNoteMarkers(t *testing.T) {
 	for _, want := range []string{
-		"Approve", "Revise", "cquit", ">>", ">>>", "winbar", "unwatched",
+		"Approve", "Revise", "cquit", ">>", ">>>", "winbar", "auto mode",
 	} {
 		if !strings.Contains(setup, want) {
 			t.Errorf("the setup is missing %q", want)
@@ -70,7 +70,7 @@ func TestTheSetupOffersEveryAnswerAndBothNoteMarkers(t *testing.T) {
 // looks for — a rename on one side only would silently stop the wider answer
 // reaching anybody.
 func TestTheSetupMarksTheFileTheToolLooksFor(t *testing.T) {
-	if !strings.Contains(setup, `.. ".unwatched"`) {
-		t.Error("the setup does not write the mark beside the plan as <plan>.unwatched")
+	if !strings.Contains(setup, `.. ".auto"`) {
+		t.Error("the setup does not write the mark beside the plan as <plan>.auto")
 	}
 }

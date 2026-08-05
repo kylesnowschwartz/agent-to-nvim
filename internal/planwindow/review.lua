@@ -19,13 +19,13 @@ local function note(marker)
   vim.cmd("startinsert!")
 end
 
--- Approving and then walking away is a second answer, and it is written down
--- beside the plan rather than carried in the exit code. An editor that crashes
--- exits how it likes, and none of those ways may read as "approve and stop asking
--- me about the work" — so the wider answer is the one that has to be said
--- explicitly, and its absence is the narrower one.
-local function leave_unwatched()
-  local marked = io.open(vim.api.nvim_buf_get_name(plan) .. ".unwatched", "w")
+-- Approving into auto mode is a second answer, and it is written down beside the
+-- plan rather than carried in the exit code. An editor that crashes exits how it
+-- likes, and none of those ways may read as "approve and stop asking me to confirm
+-- each step" — so the wider answer is the one that has to be said explicitly, and
+-- its absence is the narrower one.
+local function leave_auto_mark()
+  local marked = io.open(vim.api.nvim_buf_get_name(plan) .. ".auto", "w")
   if not marked then return end
   marked:write("yes")
   marked:close()
@@ -34,15 +34,15 @@ end
 -- Saving is approval and quitting with a failure is a request to revise. Both
 -- write first: the notes are the answer either way, and an unwritten buffer would
 -- send the plan back with nothing said about it.
-local function approve(unwatched)
-  if unwatched then leave_unwatched() end
+local function approve(auto)
+  if auto then leave_auto_mark() end
   vim.cmd("write")
   vim.cmd("quit")
 end
 
 vim.api.nvim_buf_create_user_command(plan, "Approve", function(cmd)
   approve(cmd.bang)
-end, { bang = true, desc = "carry this plan out; with ! carry it out unwatched" })
+end, { bang = true, desc = "carry this plan out; with ! carry it out in auto mode" })
 
 vim.api.nvim_buf_create_user_command(plan, "Revise", function()
   vim.cmd("write")
@@ -51,7 +51,7 @@ end, { desc = "send the plan back to be revised" })
 
 local keys = {
   { "<leader>a", "<Cmd>Approve<CR>", "carry this plan out" },
-  { "<leader>A", "<Cmd>Approve!<CR>", "carry it out unwatched, asking nothing" },
+  { "<leader>A", "<Cmd>Approve!<CR>", "carry it out in auto mode, confirming nothing" },
   { "<leader>r", "<Cmd>Revise<CR>", "send the plan back to be revised" },
   { "<leader>n", function() note(">>") end, "note about this part of the plan" },
   { "<leader>N", function() note(">>>") end, "note about the whole plan" },
@@ -63,7 +63,7 @@ end
 vim.opt_local.winbar = table.concat({
   "  plan review",
   "<leader>a approve",
-  "<leader>A approve, unwatched",
+  "<leader>A approve, auto mode",
   "<leader>r revise",
   "<leader>n note here",
   "<leader>N note on all of it",

@@ -223,7 +223,7 @@ along the top so there is nothing to remember:
 | Key | What it means |
 | --- | --- |
 | `<leader>a` | Carry this plan out. |
-| `<leader>A` | Carry it out unwatched, asking you nothing. |
+| `<leader>A` | Carry it out in auto mode, confirming nothing with you. |
 | `<leader>r` | Send it back to be revised. |
 | `<leader>n` | Open a note about this part of the plan. |
 | `<leader>N` | Open a note about the whole plan. |
@@ -232,10 +232,15 @@ along the top so there is nothing to remember:
 they are just saving and quitting — `:wq` approves and `:cq` sends the plan back —
 so the keys are a convenience rather than a requirement.
 
-`<leader>A` is for approving and walking away. It switches the session to auto mode
-for the rest of its life — the same mode Claude Code's own dialog switches to — so
-the work runs to the end without stopping to ask. `<leader>a` leaves the session in
-whatever mode it was already in, which is the one to use if you want to watch.
+`<leader>A` switches the session to auto mode as well as approving, so the work runs
+start to finish without stopping to have each step confirmed. It matches the "Yes,
+and use auto mode" answer in Claude Code's own dialog. `<leader>a` leaves the session
+in whatever mode it was already in.
+
+The dialog's first answer — clearing the context as well — has no equivalent here.
+Clearing the context is not something the answer to a plan request can carry: Claude
+Code does it by turning the request down and starting a fresh turn with the plan in
+it, which is not a decision a hook can return.
 
 Notes travel either way, and which key you pressed decides what they are for:
 

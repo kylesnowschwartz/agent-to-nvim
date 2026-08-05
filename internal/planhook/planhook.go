@@ -117,15 +117,14 @@ func Allow(plan string, submitted map[string]any) Decision {
 	}}
 }
 
-// RunUnwatched returns the approval with the session switched to the mode that
-// carries work out without stopping to ask, so a reviewer who approved and walked
-// away comes back to a finished plan rather than a waiting prompt.
+// InAutoMode returns the approval with the session switched to auto mode, where
+// the work runs start to finish without stopping to have each step confirmed.
 //
 // Approving a plan does not otherwise widen anything: the session lands in the
-// mode it was already in. This is the same mode Claude Code's own approval dialog
-// switches to, which is the point — an approval given here and an approval given
-// there leave the session in the same place.
-func (d Decision) RunUnwatched() Decision {
+// mode it was already in. Auto mode is what Claude Code's own approval dialog
+// offers alongside approving, which is the point — an approval given here and an
+// approval given there leave the session in the same place.
+func (d Decision) InAutoMode() Decision {
 	d.Output.Verdict.Permissions = append(d.Output.Verdict.Permissions, permission{
 		Type:        "setMode",
 		Mode:        "auto",
