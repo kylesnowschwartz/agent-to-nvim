@@ -7,10 +7,10 @@
 //
 // Stdout carries the draft and nothing else, so a caller can send it as it
 // stands. A line the human starts with ">>" is an aside to the agent rather than
-// draft text; it is reported on stderr instead of being handed on, under the
-// numbered draft lines it sits between so the caller can tell which part of the
-// draft it is about. ">>>" is an aside about the draft as a whole, reported
-// without any lines because it has no one part to point at.
+// draft text; it is reported on stderr instead of being handed on, sitting in a
+// quote of the numbered draft where it was written, so the caller can tell which
+// part of the draft it is about. ">>>" is an aside about the draft as a whole,
+// reported above the quote because it has no one part to point at.
 //
 // Waiting is bounded so the caller exits on its own terms rather than being
 // killed by whatever timeout wraps it. When the deadline passes, nvim keeps
@@ -25,12 +25,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/editwindow"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/notereport"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/notes"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/pending"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/planhook"
@@ -382,53 +382,37 @@ func readBack(original, current string) handback {
 // nothing came back to act on, so a draft left word for word alone but annotated
 // counts as edited: the notes are the edit.
 func announce(w io.Writer, back handback, showDiff bool) int {
-	switch {
-	case back.text == back.before && len(back.notes) == 0:
+	if back.text == back.before && len(back.notes) == 0 {
 		say(w, "agent-to-nvim: draft saved unchanged\n")
 		return exitUnchanged
-	case back.text == back.before:
-		say(w, "agent-to-nvim: draft text unchanged, with notes\n")
-	default:
-		say(w, "agent-to-nvim: draft edited\n")
-		if showDiff {
-			say(w, "%s", textdiff.Unified(back.before, back.text))
-		}
 	}
-	for _, note := range back.notes {
-		sayNote(w, note)
+
+	say(w, "agent-to-nvim: %s\n", outcome(back))
+	if back.text != back.before && showDiff {
+		say(w, "%s", textdiff.Unified(back.before, back.text))
+	}
+	if len(back.notes) > 0 {
+		say(w, "\n%s", notereport.Render(back.notes))
 	}
 	return exitEdited
 }
 
-// noteIndent lines a note's later lines up under its first, so a note written
-// across several marker lines reads as one instruction rather than as loose text
-// beneath it. It is the width of the "note: " label.
-const noteIndent = "      "
-
-// sayNote reports one note. A note about part of the draft comes with the lines
-// it sits between, numbered as the draft on stdout is: the note's own line is
-// gone from that draft, so without them nothing ties the instruction to the text
-// it is about. A note about the whole draft has no such lines, and saying so is
-// what keeps it from being read as being about wherever it was typed.
-func sayNote(w io.Writer, note notes.Note) {
-	if note.About == notes.Whole {
-		say(w, "note (whole draft): %s\n", continued(note.Said))
-		return
+// outcome says what came back, counting the notes. The count sits with the outcome
+// rather than at the head of the notes section, where a number would read as one
+// of the draft line numbers under it.
+func outcome(back handback) string {
+	what := "draft edited"
+	if back.text == back.before {
+		what = "draft text unchanged"
 	}
-
-	say(w, "note: %s\n", continued(note.Said))
-	width := len(strconv.Itoa(max(note.Above.Num, note.Below.Num)))
-	for _, line := range []notes.Line{note.Above, note.Below} {
-		if line.Num == 0 {
-			continue
-		}
-		say(w, "  %*d  %s\n", width, line.Num, line.Text)
+	switch len(back.notes) {
+	case 0:
+		return what
+	case 1:
+		return what + ", 1 note"
+	default:
+		return fmt.Sprintf("%s, %d notes", what, len(back.notes))
 	}
-}
-
-// continued indents everything after a note's first line.
-func continued(said string) string {
-	return strings.ReplaceAll(said, "\n", "\n"+noteIndent)
 }
 
 // say reports on the outcome. Reporting is best effort: a run whose stderr has
@@ -469,13 +453,18 @@ What the human changed is reported on stderr, marked word by word:
 
 A line the human starts with ">>" is a note to the agent, not part of the draft.
 It is reported on stderr and kept off stdout, so what stdout carries can be sent
-as it stands. The lines either side of where it was written come with it, numbered
-as the text on stdout is. A note usually follows the text it is about, so the first
-of the two is the likelier referent:
+as it stands. Each note is reported inside a quote of the draft around it, marked
+">>" in the margin and sitting where it was written. The quoted lines are numbered
+as the text on stdout is. A note usually follows the text it is about, so the line
+above it is the likelier referent:
 
-  note: make this shorter
-    3  Launch is on Thursday, please read the runbook.
-    4  Ping me if that clashes with anything.
+  notes:
+     3  Launch is on Thursday, please read the runbook.
+  >> make this shorter
+     4  Ping me if that clashes with anything.
+
+The lines say where a note was written, not how far it reaches — plenty of notes
+are about the whole draft.
 
 ">>>" is a note about the whole draft. It has no one part to point at, so it comes
 back without any lines:

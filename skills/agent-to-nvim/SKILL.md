@@ -67,7 +67,7 @@ The exit code is the whole result. Read it before anything else.
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 0 | Saved with changes, or notes left | Use the printed text, not the draft. Do what any `note:` lines say first. |
+| 0 | Saved with changes, or notes left | Use the printed text, not the draft. Do what any `>>` lines say first. |
 | 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
 | 20 | Discarded | **Stop.** Do not send, commit, or post anything. Do not re-run. The file is left on disk in case they want it back. |
 | 30 | Still being edited | Run the `collect` command printed on stderr. |
@@ -98,42 +98,45 @@ A line the user starts with `>>` is a note to you, not draft text. The command
 keeps it off stdout and reports it on stderr instead:
 
 ```
-agent-to-nvim: draft edited
+agent-to-nvim: draft edited, 2 notes
 @@ line 1 @@
-~ Launch is on [-Wednesday-]{+Thursday+}.
-note: check that with ops before you post it
-  1  Launch is on Thursday.
-  2  Read the runbook first.
+~ Launch is on [-Wednesday.-]{+Thursday.+}
+  Read the runbook first.
+
+notes:
+   1  Launch is on Thursday.
+>> check that with ops before you post it
+   2  Read the runbook first.
+>> link the runbook?
+   3  Ping me if that clashes.
 ```
 
 So stdout is always safe to send as it stands — you never have to strip anything
 out of it yourself.
 
-The two numbered lines under a note are the draft lines it was written between,
-numbered as the text on stdout is. A note usually follows the text it is about, so
-for one like "drop this" or "this line is wrong", read the first of the two — the
-line above the note — as what it refers to.
+Under `notes:` is the draft quoted around the notes, numbered as the text on stdout
+is. A `>>` line is what the user said; a numbered line is their draft. Each note
+sits where they typed it, so the line above a note is the one it most likely refers
+to — read "drop this" or "this line is wrong" against the numbered line directly
+above it.
 
-The lines say where the note was written, not how far it reaches. Take the scope
-from what the note says and use the lines to place it. A note at the very top or
-bottom shows only the one line it has beside it.
+The quoted lines say where a note was written, not how far it reaches. Take the
+scope from what the note says and use the lines only to place it. A note at the very
+top or bottom shows only the one line it has beside it.
 
-A note reported as `note (whole draft):` is about all of it and comes with no
-lines, so do not go looking for the part it refers to:
-
-```
-note (whole draft): this reads too formally all the way through
-```
-
-A note written across several lines arrives as one note, with its later lines
-indented. Read it as a single instruction:
+A `>>>` line is about the whole draft rather than any part of it, so it sits above
+the quote with no lines around it. Do not go looking for the part it refers to:
 
 ```
-note: check that with ops
-      they asked for it twice
+notes:
+>>> this reads too formally all the way through
 ```
 
-Each `note:` line is an instruction about the draft. Act on it before doing
+A blank line means the next quote is from somewhere else in the draft. A run of
+`>>` lines with nothing between them is one note running to several lines; a blank
+line between two of them makes them two notes about the same place.
+
+Each `>>` line is an instruction about the draft. Act on it before doing
 anything with the text:
 
 - **A note asking for a change** ("make this shorter", "drop the last para") means
@@ -143,8 +146,8 @@ anything with the text:
   in the conversation, not to send.
 - **A note that only comments** ("nice") needs nothing.
 
-Exit 0 with `draft text unchanged, with notes` means they left the wording alone
-and told you something instead. There is still work to do — do not read it as
+Exit 0 with `draft text unchanged, 2 notes` means they left the wording alone and
+told you something instead. There is still work to do — do not read it as
 approval.
 
 ## Read what changed
