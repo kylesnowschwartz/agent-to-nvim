@@ -238,9 +238,13 @@ func hunkLines(rows []row) []string {
 			fresh, run := texts(rows, at, added)
 			at = run
 
+			markedLines, alike := marked(gone, fresh)
 			switch {
+			case len(gone) > 0 && len(fresh) > 0 && alike:
+				lines = append(lines, prefixEach("~ ", markedLines)...)
 			case len(gone) > 0 && len(fresh) > 0:
-				lines = append(lines, prefixEach("~ ", marked(gone, fresh))...)
+				lines = append(lines, prefixEach("- ", gone)...)
+				lines = append(lines, prefixEach("+ ", fresh)...)
 			case len(gone) > 0:
 				lines = append(lines, prefixEach("- ", gone)...)
 			default:
@@ -266,18 +270,28 @@ func prefixEach(prefix string, lines []string) []string {
 	return marked
 }
 
+// similarityThreshold is the share of a block's words that must survive the
+// edit for word marking to help. Below it the two versions have too little in
+// common: the markers interleave scraps of both texts around coincidental
+// shared words, which reads worse than the plain before and after.
+const similarityThreshold = 0.3
+
 // marked renders a replaced block with the words that actually moved wrapped in
-// [-removed-] and {+added+}.
+// [-removed-] and {+added+}. alike is false when the block fails the similarity
+// threshold; the caller shows the two versions whole instead.
 //
 // Neighbouring tokens of the same kind are joined into one pair of markers. A
 // word and the space after it are separate tokens, so wrapping each on its own
 // turns a two-word insertion into four sets of brackets.
-func marked(gone, fresh []string) []string {
+func marked(gone, fresh []string) (lines []string, alike bool) {
 	was := tokenize(strings.Join(gone, "\n"))
 	now := tokenize(strings.Join(fresh, "\n"))
 
 	var out strings.Builder
 	rows := alignMiddle(was, now, 0)
+	if !similar(rows) {
+		return nil, false
+	}
 	for at := 0; at < len(rows); {
 		run := at
 		for run < len(rows) && rows[run].kind == rows[at].kind {
@@ -298,7 +312,29 @@ func marked(gone, fresh []string) []string {
 		}
 		at = run
 	}
-	return strings.Split(out.String(), "\n")
+	return strings.Split(out.String(), "\n"), true
+}
+
+// similar reports whether enough words survived the edit for word marking to be
+// worth reading. Only words count — whitespace tokens match by coincidence.
+func similar(rows []row) bool {
+	kept, was, now := 0, 0, 0
+	for _, r := range rows {
+		if strings.TrimSpace(r.text) == "" {
+			continue
+		}
+		switch r.kind {
+		case equal:
+			kept++
+			was++
+			now++
+		case removed:
+			was++
+		case added:
+			now++
+		}
+	}
+	return float64(kept) >= similarityThreshold*float64(max(was, now))
 }
 
 // tokenize splits into alternating runs of whitespace and non-whitespace, so

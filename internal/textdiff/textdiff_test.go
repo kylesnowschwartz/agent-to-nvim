@@ -121,18 +121,36 @@ func TestUnifiedTruncatesAWholesaleRewrite(t *testing.T) {
 	}
 }
 
-// A paragraph replaced outright still gets marked, and the markup must not lose
-// or duplicate any of the text it describes.
-func TestMarkedKeepsEveryWord(t *testing.T) {
+// A paragraph replaced outright shares too few words for markers to read well,
+// so it comes back as the plain before and after — with nothing lost.
+func TestRewrittenParagraphFallsBackToWholeLines(t *testing.T) {
 	got := Unified(
 		"An agent prints the draft into the transcript and asks whether it looks right.\n",
 		"It's annoying to go back and forth with agents when drafting content.\n",
 	)
 
+	if strings.Contains(got, "[-") || strings.Contains(got, "{+") {
+		t.Errorf("Unified() = %q, want no word markup for a wholesale rewrite", got)
+	}
+	if !strings.Contains(got, "- An agent prints") || !strings.Contains(got, "+ It's annoying") {
+		t.Errorf("Unified() = %q, want the old and new lines shown whole", got)
+	}
 	for _, word := range []string{"transcript", "annoying", "drafting", "asks"} {
 		if !strings.Contains(got, word) {
 			t.Errorf("Unified() = %q, missing %q", got, word)
 		}
+	}
+}
+
+// A light edit stays above the similarity threshold and keeps word marking.
+func TestLightEditStaysMarked(t *testing.T) {
+	got := Unified(
+		"Launch is on Wednesday, please review the runbook before then.\n",
+		"Launch is on Thursday, please read the runbook before then.\n",
+	)
+
+	if !strings.Contains(got, "~ ") || !strings.Contains(got, "{+Thursday,+}") {
+		t.Errorf("Unified() = %q, want the light edit marked word by word", got)
 	}
 }
 
