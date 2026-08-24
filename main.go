@@ -368,12 +368,20 @@ func settle(
 			back.keptAt = kept
 		}
 	}
+	// A scratch draft's text exists nowhere else once the file is dropped, so it
+	// goes to stdout whole. A file edited in place already holds the text — the
+	// diff and notes say everything that happened, and printing a large file
+	// again only overflows the caller's output cap.
+	if store.IsScratch(handed.Path()) {
+		fmt.Print(back.text)
+	} else {
+		back.textAt = handed.Path()
+	}
 	// Only once the text is safely in hand. An abandoned or discarded edit leaves
 	// the file where it is: a human who saved and then closed the window still has
 	// their words on disk, and nothing has printed them anywhere else.
 	store.DropScratch(handed.Path())
 
-	fmt.Print(back.text)
 	return announce(os.Stderr, back, set.diff), nil
 }
 
@@ -385,6 +393,7 @@ type handback struct {
 	notes  []notes.Note
 	before string
 	keptAt string // where the durable copy of the notes lives, "" when none
+	textAt string // where the edited text lives when not printed, "" when printed
 }
 
 // readBack separates notes from draft text on both sides, so the change reported
@@ -405,6 +414,9 @@ func announce(w io.Writer, back handback, showDiff bool) int {
 	}
 
 	say(w, "agent-to-nvim: %s\n", outcome(back))
+	if back.textAt != "" {
+		say(w, "the edited text is saved in %s and is not printed — the report below is the whole change, so there is no need to read the file back\n", back.textAt)
+	}
 	if back.text != back.before && showDiff {
 		say(w, "%s", textdiff.Unified(back.before, back.text))
 	}

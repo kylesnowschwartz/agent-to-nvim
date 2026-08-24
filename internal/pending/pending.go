@@ -143,10 +143,16 @@ func safeName(name string) string {
 // discarded or abandoned holds words that went nowhere else, so it is left on
 // disk to be recovered.
 func (s *Store) DropScratch(path string) {
-	if filepath.Dir(path) != s.DraftsDir() {
+	if !s.IsScratch(path) {
 		return
 	}
 	_ = os.Remove(path)
+}
+
+// IsScratch reports whether a draft lives in DraftsDir — written only for the
+// handover — as opposed to being a file of the user's own edited in place.
+func (s *Store) IsScratch(path string) bool {
+	return filepath.Dir(path) == s.DraftsDir()
 }
 
 // Begin allocates an id and an exit-code path for a draft about to be handed

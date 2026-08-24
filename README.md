@@ -73,6 +73,11 @@ edit is handed back, the file is rewritten holding only the draft text, and the
 note report is kept as its own file under `~/.local/state/agent-to-nvim/notes/`,
 at the path printed after the report.
 
+A file edited in place also prints nothing on stdout: the file already holds the
+edited text, and the diff and notes on stderr are the whole record, so an agent
+never pays for the full document twice. Only a scratch draft — whose file is
+removed after handback — comes back whole on stdout.
+
 A draft that is not already a file goes in `~/.local/state/agent-to-nvim/drafts/`
 under a name that says what it is. That path is fixed so an agent can write
 straight to it rather than spending a command minting a temp directory first, and

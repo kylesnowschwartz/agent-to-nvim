@@ -67,7 +67,7 @@ The exit code is the whole result. Read it before anything else.
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 0 | Saved with changes, or notes left | Use the printed text, not the draft. Do what any `>>` lines say first. |
+| 0 | Saved with changes, or notes left | Scratch draft: use the printed text. In-place file: the file holds the text; use the diff and notes, do not re-read it. Do what any `>>` lines say first. |
 | 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
 | 20 | Discarded | **Stop.** Do not send, commit, or post anything. Do not re-run. The file is left on disk in case they want it back. |
 | 30 | Still being edited | Tell the user nothing was lost and wait for them to say they're done. See below. |
@@ -92,9 +92,18 @@ Two failure modes to avoid:
      as normal. If it returns 30 again, they weren't actually done — repeat
      step 2, don't loop.
 
-On 0 or 10, the edited text is on stdout. Use exactly that text. Do not merge it
-with the original draft or re-apply wording that was edited out — an edit that
-removed something meant to remove it.
+On 0 or 10, where the text lands depends on what was handed over:
+
+- **A scratch draft** (written to the drafts directory) comes back whole on
+  stdout. Use exactly that text. Do not merge it with the original draft or
+  re-apply wording that was edited out — an edit that removed something meant to
+  remove it.
+- **A real file edited in place** prints nothing on stdout — the file already
+  holds the edited text, notes stripped. The diff and notes on stderr are the
+  complete record of what happened. **Do not read the file back to "check", and
+  do not open any truncated tool-output file the harness points at** — everything
+  the edit changed is in the report, and re-reading a large file just spends the
+  tokens the quiet stdout saved.
 
 ## Do what the notes say
 

@@ -173,3 +173,15 @@ func TestAnnounceSuppressesTheReportButNotTheNotes(t *testing.T) {
 		t.Errorf("stderr = %q, want notes reported regardless of -diff", out.String())
 	}
 }
+
+func TestAnnounceSaysWhereAnUnprintedEditLives(t *testing.T) {
+	back := readBack("hey team\n", "hey team, shipping today\n")
+	back.textAt = "/Users/someone/project/README.md"
+
+	var out strings.Builder
+	announce(&out, back, true)
+
+	if !strings.Contains(out.String(), "saved in /Users/someone/project/README.md") {
+		t.Errorf("report does not say where the text lives:\n%s", out.String())
+	}
+}
