@@ -351,12 +351,28 @@ func settle(
 	if err != nil {
 		return 0, err
 	}
+
+	back := readBack(string(handed.Original()), current)
+	if len(back.notes) > 0 {
+		// The notes were instructions to the agent, not draft text: strip them
+		// out of the file itself so a real file edited in place never keeps
+		// them, and keep a durable copy so the report surviving only on stderr
+		// is not the last of them.
+		if err := handed.WriteBack(back.text); err != nil {
+			return 0, err
+		}
+		kept, err := store.KeepNotes(edit.ID, notereport.Render(back.notes))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "agent-to-nvim: %v\n", err)
+		} else {
+			back.keptAt = kept
+		}
+	}
 	// Only once the text is safely in hand. An abandoned or discarded edit leaves
 	// the file where it is: a human who saved and then closed the window still has
 	// their words on disk, and nothing has printed them anywhere else.
 	store.DropScratch(handed.Path())
 
-	back := readBack(string(handed.Original()), current)
 	fmt.Print(back.text)
 	return announce(os.Stderr, back, set.diff), nil
 }
@@ -368,6 +384,7 @@ type handback struct {
 	text   string
 	notes  []notes.Note
 	before string
+	keptAt string // where the durable copy of the notes lives, "" when none
 }
 
 // readBack separates notes from draft text on both sides, so the change reported
@@ -393,6 +410,9 @@ func announce(w io.Writer, back handback, showDiff bool) int {
 	}
 	if len(back.notes) > 0 {
 		say(w, "\n%s", notereport.Render(back.notes))
+		if back.keptAt != "" {
+			say(w, "\na copy of the notes is kept at %s\n", back.keptAt)
+		}
 	}
 	return exitEdited
 }

@@ -54,6 +54,20 @@ func (d *Draft) Path() string { return d.path }
 // compared against.
 func (d *Draft) Original() []byte { return d.original }
 
+// WriteBack replaces the file's content with text. It saves the draft with the
+// notes stripped out, so annotations never persist inside a real file edited in
+// place. The file's own permissions are kept.
+func (d *Draft) WriteBack(text string) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(d.path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := os.WriteFile(d.path, []byte(text), mode); err != nil {
+		return fmt.Errorf("write draft without notes: %w", err)
+	}
+	return nil
+}
+
 // Reread returns the file's current text. Whether that counts as an edit is the
 // caller's call against Original, and it is settled by comparing content rather
 // than modification time: writing in nvim touches mtime even when nothing

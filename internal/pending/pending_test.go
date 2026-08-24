@@ -333,3 +333,22 @@ func openTestStore(t *testing.T) (store *Store, dir string) {
 	}
 	return store, filepath.Join(base, "agent-to-nvim")
 }
+
+func TestKeepNotesWritesAReadableCopy(t *testing.T) {
+	store, _ := openTestStore(t)
+
+	path, err := store.KeepNotes("5ce4bf832a", "notes:\n>> shorten this\n")
+	if err != nil {
+		t.Fatalf("KeepNotes: %v", err)
+	}
+	if filepath.Dir(path) != store.NotesDir() {
+		t.Errorf("notes kept in %q, want %q", filepath.Dir(path), store.NotesDir())
+	}
+	kept, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read kept notes: %v", err)
+	}
+	if want := "notes:\n>> shorten this\n"; string(kept) != want {
+		t.Errorf("kept notes = %q, want %q", kept, want)
+	}
+}

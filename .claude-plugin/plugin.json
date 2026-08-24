@@ -1,6 +1,6 @@
 {
   "name": "agent-to-nvim",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Review a plan and edit a draft in nvim: plan mode opens in a tmux window instead of a browser, and a draft headed anywhere outside the conversation is handed over the same way",
   "author": {
     "name": "Kyle Snow Schwartz",

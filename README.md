@@ -68,7 +68,10 @@ plan](#reviewing-a-plan). The rest of this describes handing a draft over.
 
 The file is edited in place, so an edit to a real project file is saved where it
 belongs. Agents should write the draft with a file tool and pass the path rather
-than piping text in.
+than piping text in. Notes (`>>` lines, below) do not stay in the file: once the
+edit is handed back, the file is rewritten holding only the draft text, and the
+note report is kept as its own file under `~/.local/state/agent-to-nvim/notes/`,
+at the path printed after the report.
 
 A draft that is not already a file goes in `~/.local/state/agent-to-nvim/drafts/`
 under a name that says what it is. That path is fixed so an agent can write

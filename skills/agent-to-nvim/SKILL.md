@@ -122,7 +122,11 @@ notes:
 ```
 
 So stdout is always safe to send as it stands — you never have to strip anything
-out of it yourself.
+out of it yourself. The file on disk is rewritten the same way: a real file edited
+in place comes back holding only the draft text, never the notes. Each note report
+is also saved to a file, and its path is printed after the report (`a copy of the
+notes is kept at ...`) — if the report ever scrolls out of reach, read the notes
+back from there instead of asking the user to retype them.
 
 Under `notes:` is the draft quoted around the notes, numbered as the text on stdout
 is. A `>>` line is what the user said; a numbered line is their draft. Each note

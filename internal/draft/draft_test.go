@@ -118,3 +118,33 @@ func writeDraft(t *testing.T, text string) string {
 	}
 	return path
 }
+
+func TestWriteBackReplacesContentAndKeepsPermissions(t *testing.T) {
+	path := writeDraft(t, "hey team\n>> shorten this\n")
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	handed, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	if err := handed.WriteBack("hey team\n"); err != nil {
+		t.Fatalf("WriteBack: %v", err)
+	}
+
+	text, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read written draft: %v", err)
+	}
+	if want := "hey team\n"; string(text) != want {
+		t.Errorf("text = %q, want %q", text, want)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o640 {
+		t.Errorf("permissions = %v, want 0640", got)
+	}
+}

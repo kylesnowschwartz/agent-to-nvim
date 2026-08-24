@@ -63,7 +63,7 @@ func OpenStore() (*Store, error) {
 		return nil, fmt.Errorf("resolve state directory: %w", err)
 	}
 	store := &Store{dir: dir}
-	for _, sub := range []string{store.DraftsDir(), store.PlansDir()} {
+	for _, sub := range []string{store.DraftsDir(), store.PlansDir(), store.NotesDir()} {
 		if err := os.MkdirAll(sub, 0o700); err != nil {
 			return nil, fmt.Errorf("create state directory: %w", err)
 		}
@@ -78,6 +78,22 @@ func (s *Store) DraftsDir() string { return filepath.Join(s.dir, "drafts") }
 
 // PlansDir is where a plan under review is held while a human reads it.
 func (s *Store) PlansDir() string { return filepath.Join(s.dir, "plans") }
+
+// NotesDir is where the notes from each settled edit are kept, so an agent
+// whose process lost the stderr report can read them back.
+func (s *Store) NotesDir() string { return filepath.Join(s.dir, "notes") }
+
+// KeepNotes writes the rendered notes report for an edit to NotesDir, named by
+// the edit's id. The copy stays after the edit settles: the report on stderr is
+// gone the moment it scrolls away, and this file is the only other place the
+// user's instructions exist.
+func (s *Store) KeepNotes(id, rendered string) (string, error) {
+	path := filepath.Join(s.NotesDir(), id+".txt")
+	if err := writeFileAtomic(path, []byte(rendered)); err != nil {
+		return "", fmt.Errorf("keep notes: %w", err)
+	}
+	return path, nil
+}
 
 // HoldPlan writes a plan out for review and returns the file to open.
 //
