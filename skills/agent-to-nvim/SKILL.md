@@ -70,7 +70,7 @@ The exit code is the whole result. Read it before anything else.
 | 0 | Saved with changes, or notes left | Use the printed text, not the draft. Do what any `>>` lines say first. |
 | 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
 | 20 | Discarded | **Stop.** Do not send, commit, or post anything. Do not re-run. The file is left on disk in case they want it back. |
-| 30 | Still being edited | Run the `collect` command printed on stderr. |
+| 30 | Still being edited | Tell the user nothing was lost and wait for them to say they're done. See below. |
 | 1 | Could not run the edit | Report the error. |
 
 Two failure modes to avoid:
@@ -78,15 +78,19 @@ Two failure modes to avoid:
 - **Exit 20 is not a failure to retry.** The user closed the draft on purpose.
   Reopening it overrides a decision they just made. Say the draft was discarded and
   ask what they want instead.
-- **Exit 30 is not a timeout to give up on.** nvim is still open and the draft is
-  safe. Run the printed command and keep waiting:
+- **Exit 30 is not a timeout to give up on — and not one to poll on either.**
+  nvim is still open and the draft is safe on disk; only the waiting process gave
+  up. Do NOT immediately re-run anything in a wait loop — that burns eight-minute
+  blocks while the user edits at their own pace. Instead:
 
-  ```
-  agent-to-nvim collect 5ce4bf832a
-  ```
-
-  It can return 30 again if the user is still going. Run it again — with the Bash
-  timeout still at 600000 — until it returns 0, 10, or 20.
+  1. Note the `collect` command printed on stderr (e.g. `agent-to-nvim collect
+     5ce4bf832a`).
+  2. Tell the user, briefly: "The process waiting on your edit timed out —
+     that's harmless, your draft and edits are safe. Just message me when you're
+     done in nvim." Then end your turn and wait for their reply.
+  3. When they reply, run the noted `collect` command and act on its exit code
+     as normal. If it returns 30 again, they weren't actually done — repeat
+     step 2, don't loop.
 
 On 0 or 10, the edited text is on stdout. Use exactly that text. Do not merge it
 with the original draft or re-apply wording that was edited out — an edit that
@@ -94,8 +98,14 @@ removed something meant to remove it.
 
 ## Do what the notes say
 
-A line the user starts with `>>` is a note to you, not draft text. The command
-keeps it off stdout and reports it on stderr instead:
+A line the user starts with `>>` is a note to you, not draft text. There are two
+kinds, and the number of angle brackets says the scope:
+
+- `>>` is about the line or section it sits next to — a local note.
+- `>>>` is about the whole draft — tone, structure, length, whether to send it at
+  all. It has no anchor in the text, so never hunt for "the line it means".
+
+The command keeps both off stdout and reports them on stderr instead:
 
 ```
 agent-to-nvim: draft edited, 2 notes
@@ -124,8 +134,8 @@ The quoted lines say where a note was written, not how far it reaches. Take the
 scope from what the note says and use the lines only to place it. A note at the very
 top or bottom shows only the one line it has beside it.
 
-A `>>>` line is about the whole draft rather than any part of it, so it sits above
-the quote with no lines around it. Do not go looking for the part it refers to:
+A `>>>` line, being about the whole draft, sits above the quote with no lines
+around it:
 
 ```
 notes:

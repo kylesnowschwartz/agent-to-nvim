@@ -212,7 +212,7 @@ after `-deadline` and hands back a way to resume:
 ```
 $ agent-to-nvim draft.md
 agent-to-nvim: still being edited after 8m; the draft is safe —
-wait for it with: agent-to-nvim collect 5ce4bf832a
+tell the user to say when they're done, then run: agent-to-nvim collect 5ce4bf832a
 $ echo $?
 30
 
@@ -221,7 +221,9 @@ Hey team — launch is Thursday, not Wednesday.
 ```
 
 nvim keeps running through all of this. `collect` reattaches to the same window and
-finishes the edit, however many times it takes.
+finishes the edit. An agent should not re-run `collect` in a wait loop — the
+intended flow is to tell the user the wait timed out harmlessly, let them edit at
+their own pace, and run `collect` once when they say they are done.
 
 A tmux window rather than a `display-popup` because the window is owned by the tmux
 server: an SSH drop or an expired VPN leaves nvim running, and reattaching brings

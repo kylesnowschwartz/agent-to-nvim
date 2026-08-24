@@ -330,7 +330,7 @@ func settle(
 	switch {
 	case errors.Is(err, editwindow.ErrDeadline):
 		fmt.Fprintf(os.Stderr,
-			"agent-to-nvim: still being edited after %s; the draft is safe — wait for it with: agent-to-nvim collect %s\n",
+			"agent-to-nvim: still being edited after %s; the draft is safe — tell the user to say when they're done, then run: agent-to-nvim collect %s\n",
 			set.deadline, edit.ID)
 		return exitStillOpen, nil
 	case errors.Is(err, editwindow.ErrWindowClosed):
@@ -478,6 +478,7 @@ exit codes:
   10  saved unchanged (approved as-is)
   20  discarded (:cq or the window was killed)
   30  deadline passed, still being edited — run the printed collect command
+      once the user says they are done; do not re-run it in a wait loop
   1   could not run the edit
 
 flags:
