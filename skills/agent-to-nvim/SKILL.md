@@ -54,8 +54,16 @@ tells the two apart rather than overwriting.
 agent-to-nvim ~/.local/state/agent-to-nvim/drafts/slack-launch-announcement.md
 ```
 
-**Set the Bash tool timeout to 600000.** The command blocks while the user edits,
-and the default 120s timeout will cut it off mid-edit.
+**Run it as a background task** (`run_in_background: true` on the Bash tool). The
+command waits while the user edits — up to ten minutes by default — and a
+foreground call would block the whole session for that long. In the background it
+costs nothing: the harness re-invokes you when the command exits, whether that is
+the finished edit or the ten-minute deadline.
+
+While it runs, carry on with other work, or end your turn if there is none — do
+NOT poll the task, sleep, or wait in a loop. The exit is delivered to you. When
+the notification arrives, read the task's exit code and output, then act on the
+exit code exactly as the table below says.
 
 The tmux window opens focused, and the user's previous window is restored when
 they finish. Add `-focus=false` to open it in the background instead — worth doing
@@ -70,7 +78,7 @@ The exit code is the whole result. Read it before anything else.
 | 0 | Saved with changes, or notes left | Scratch draft: use the printed text. In-place file: the file holds the text; use the diff and notes, do not re-read it. Do what any `>>` lines say first. |
 | 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
 | 20 | Discarded | **Stop.** Do not send, commit, or post anything. Do not re-run. The file is left on disk in case they want it back. |
-| 30 | Still being edited | Tell the user nothing was lost and wait for them to say they're done. See below. |
+| 30 | Deadline passed, still being edited | Tell the user nothing was lost and wait for them to say they're done. See below. |
 | 1 | Could not run the edit | Report the error. |
 
 Two failure modes to avoid:
@@ -80,17 +88,17 @@ Two failure modes to avoid:
   ask what they want instead.
 - **Exit 30 is not a timeout to give up on — and not one to poll on either.**
   nvim is still open and the draft is safe on disk; only the waiting process gave
-  up. Do NOT immediately re-run anything in a wait loop — that burns eight-minute
-  blocks while the user edits at their own pace. Instead:
+  up after its ten-minute deadline. Do NOT re-run anything in a wait loop.
+  Instead:
 
   1. Note the `collect` command printed on stderr (e.g. `agent-to-nvim collect
      5ce4bf832a`).
   2. Tell the user, briefly: "The process waiting on your edit timed out —
      that's harmless, your draft and edits are safe. Just message me when you're
      done in nvim." Then end your turn and wait for their reply.
-  3. When they reply, run the noted `collect` command and act on its exit code
-     as normal. If it returns 30 again, they weren't actually done — repeat
-     step 2, don't loop.
+  3. When they reply, run the noted `collect` command — as a background task,
+     like the first run — and act on its exit code as normal. If it returns 30
+     again, they weren't actually done — repeat step 2, don't loop.
 
 On 0 or 10, where the text lands depends on what was handed over:
 

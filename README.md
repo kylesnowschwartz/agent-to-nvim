@@ -88,7 +88,7 @@ directory is never removed.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `-deadline` | `8m` | How long to wait before handing back a collect id. `0` waits forever. |
+| `-deadline` | `10m` | How long to wait before handing back a collect id. `0` waits forever. |
 | `-diff` | `true` | Report what changed on stderr. |
 | `-focus` | `true` | Open the edit window in the foreground and restore the previous window afterward. |
 
@@ -212,14 +212,15 @@ edit left there is dropped once it resolves.
 
 ## Long edits
 
-A blocking command usually sits inside somebody else's timeout — Claude Code's
-Bash tool caps at 600 seconds, and a human editing a message can take longer than
-that. Rather than be killed mid-edit, `agent-to-nvim` gives up on its own terms
-after `-deadline` and hands back a way to resume:
+The command is made to run as a background task: the agent keeps working while
+the human edits, and the harness delivers the result when the command exits. A
+human can still out-edit any reasonable wait, so rather than hold a process open
+forever, `agent-to-nvim` gives up on its own terms after `-deadline` and hands
+back a way to resume:
 
 ```
 $ agent-to-nvim draft.md
-agent-to-nvim: still being edited after 8m; the draft is safe —
+agent-to-nvim: still being edited after 10m; the draft is safe —
 tell the user to say when they're done, then run: agent-to-nvim collect 5ce4bf832a
 $ echo $?
 30

@@ -68,7 +68,7 @@ func run(args []string) int {
 	flags := flag.NewFlagSet("agent-to-nvim", flag.ContinueOnError)
 	flags.Usage = usage
 	focus := flags.Bool("focus", true, "open the edit window in the foreground")
-	deadline := flags.Duration("deadline", 8*time.Minute,
+	deadline := flags.Duration("deadline", 10*time.Minute,
 		"how long to wait before handing back a collect id; 0 waits indefinitely")
 	diff := flags.Bool("diff", true, "report what changed on stderr")
 
@@ -514,7 +514,7 @@ exit codes:
   1   could not run the edit
 
 flags:
-  -deadline=8m   how long to wait before handing back a collect id (0 waits forever)
+  -deadline=10m  how long to wait before handing back a collect id (0 waits forever)
   -diff=false    do not report what changed
   -focus=false   open the edit window in the background
 
