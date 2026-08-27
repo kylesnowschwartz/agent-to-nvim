@@ -75,7 +75,7 @@ The exit code is the whole result. Read it before anything else.
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 0 | Saved with changes, or notes left | Scratch draft: use the printed text. In-place file: the file holds the text; use the diff and notes, do not re-read it. Do what any `>>` lines say first. |
+| 0 | Saved with changes, or notes left | Scratch draft: use the printed text. In-place file: the file holds the text; use the diff and notes, do not re-read it. Act on any `>>` lines first — instructions get done, questions get discussed. |
 | 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
 | 20 | Discarded | **Stop.** Do not send, commit, or post anything. Do not re-run. The file is left on disk in case they want it back. |
 | 30 | Deadline passed, still being edited | Tell the user nothing was lost and wait for them to say they're done. See below. |
@@ -167,15 +167,24 @@ A blank line means the next quote is from somewhere else in the draft. A run of
 `>>` lines with nothing between them is one note running to several lines; a blank
 line between two of them makes them two notes about the same place.
 
-Each `>>` line is an instruction about the draft. Act on it before doing
-anything with the text:
+Each note is either an instruction or an opening for discussion, and telling the
+two apart is your job:
 
-- **A note asking for a change** ("make this shorter", "drop the last para") means
-  the draft is not finished. Make the change and hand it back with
-  `agent-to-nvim` again rather than sending it.
-- **A note asking a question** ("is this the right channel?") is for you to answer
-  in the conversation, not to send.
+- **A clear instruction** ("make this shorter", "drop the last para") is yours to
+  carry out. Make the change and hand the draft back with `agent-to-nvim` rather
+  than sending it.
+- **A question, doubt, or open point** ("is this the right channel?", "check that
+  with ops", "not sure about this framing") wants a conversation, not a rewrite.
+  Answer it, or do the investigating it asks for, in the conversation — then wait
+  for the user's take before revising and handing the draft back. Rewriting past
+  an unanswered question guesses at the answer and hands the user another edit to
+  redo.
 - **A note that only comments** ("nice") needs nothing.
+
+When one report mixes both kinds, hold the whole draft: raise the open points
+first, fold the answers in together with the instructed changes, and hand it back
+once. If a note could read either way, treat it as the open kind — a wasted
+question costs one reply, a wrong rewrite costs a redo.
 
 Exit 0 with `draft text unchanged, 2 notes` means they left the wording alone and
 told you something instead. There is still work to do — do not read it as
