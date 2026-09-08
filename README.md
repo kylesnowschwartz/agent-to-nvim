@@ -106,6 +106,7 @@ any output.
 | 10 | Saved unchanged — approved as-is. The text is still on stdout. |
 | 20 | Discarded with `:cq`, or the window was killed. Nothing on stdout. Do not proceed. |
 | 30 | Deadline passed and the draft is still open. The resume command is on stderr. |
+| 40 | Sent by the user themselves, via `:Sent` or `:Done`. Nothing on stdout. Acknowledge and stop. |
 | 1 | Could not run the edit. |
 
 Changed and unchanged are told apart by comparing content, not modification times

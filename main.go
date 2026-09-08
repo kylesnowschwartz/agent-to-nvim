@@ -46,6 +46,7 @@ const (
 	exitUnchanged = 10 // saved byte-identical — the draft was approved as-is
 	exitAborted   = 20 // discarded via :cq or a killed window — do not proceed
 	exitStillOpen = 30 // deadline passed, still being edited — collect it
+	exitSent      = 40 // the user sent the text themselves — acknowledge and stop
 
 	// exitAnswered is the plan review's only success. It answers Claude Code in
 	// what it writes rather than in how it exits, so the verdict is not here.
@@ -130,6 +131,7 @@ func hand(path string, set settings) (int, error) {
 
 	session, err := editwindow.Start(editwindow.Request{
 		Path:         handed.Path(),
+		EditorArgs:   handoverArgs(),
 		StartDir:     workDir,
 		Name:         "edit: " + filepath.Base(handed.Path()),
 		ExitCodeFile: edit.Window.ExitCodeFile,
@@ -148,6 +150,16 @@ func hand(path string, set settings) (int, error) {
 	}
 
 	return settle(store, edit, handed, session, set)
+}
+
+// handoverArgs binds :Sent and its alias :Done inside the handed-over nvim to
+// saving the draft and quitting with exitSent, so a user who delivers the text
+// themselves — pasting it into Slack, say — has a way to say so that the
+// waiting agent reads as done rather than as a discard.
+func handoverArgs() []string {
+	sent := fmt.Sprintf("command! Sent write | cquit %d", exitSent)
+	done := fmt.Sprintf("command! Done write | cquit %d", exitSent)
+	return []string{"-c", sent, "-c", done}
 }
 
 // collect resumes waiting on an edit a previous run handed back.
@@ -342,6 +354,11 @@ func settle(
 	}
 
 	store.Forget(edit.ID)
+	if editorCode == exitSent {
+		fmt.Fprintln(os.Stderr, "agent-to-nvim: the user sent the draft themselves; nothing left to do")
+		store.DropScratch(handed.Path())
+		return exitSent, nil
+	}
 	if editorCode != 0 {
 		fmt.Fprintln(os.Stderr, "agent-to-nvim: draft discarded in the editor")
 		return exitAborted, nil
@@ -476,7 +493,9 @@ usage: agent-to-nvim [flags] <file>
 
 Opens <file> in nvim in a new tmux window, blocks until the edit finishes, and
 prints the resulting text on stdout. If the deadline passes first, nvim keeps
-running and the printed id resumes the same edit.
+running and the printed id resumes the same edit. Type :Sent in nvim once you
+have sent the text yourself — :Done works the same way — and there is nothing
+left for the agent to do with it.
 
 "plan" is Claude Code's plan-review hook. It reads the request to leave plan mode
 on stdin, opens the plan in nvim, and writes the answer on stdout. In that window
@@ -524,6 +543,7 @@ exit codes:
   20  discarded (:cq or the window was killed)
   30  deadline passed, still being edited — run the printed collect command
       once the user says they are done; do not re-run it in a wait loop
+  40  sent by the user themselves — acknowledge and stop
   1   could not run the edit
 
 flags:

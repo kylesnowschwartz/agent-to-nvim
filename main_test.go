@@ -1,8 +1,17 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/editwindow"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/pending"
 )
 
 func TestAnnounceKeepsNotesOffTheDraft(t *testing.T) {
@@ -198,5 +207,138 @@ func TestAnnounceSaysWhereAnUnprintedEditLives(t *testing.T) {
 
 	if !strings.Contains(out.String(), "saved in /Users/someone/project/README.md") {
 		t.Errorf("report does not say where the text lives:\n%s", out.String())
+	}
+}
+
+// The handed-over nvim needs :Sent and :Done bound to the same outcome — save,
+// then quit with exitSent — so a user who delivers the text themselves has a way
+// to say so that reads as done rather than as a discard.
+func TestHandoverArgsBindSentAndDoneToSavingAndExitSent(t *testing.T) {
+	args := handoverArgs()
+
+	want := fmt.Sprintf("cquit %d", exitSent)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "command! Sent write | "+want) {
+		t.Errorf("handoverArgs() = %v, want :Sent bound to write then cquit %d", args, exitSent)
+	}
+	if !strings.Contains(joined, "command! Done write | "+want) {
+		t.Errorf("handoverArgs() = %v, want :Done bound to write then cquit %d", args, exitSent)
+	}
+}
+
+// requireTmuxAndFakeEditor points AGENT_TO_NVIM_EDITOR at a script the test
+// controls, so settle can be driven through a real editwindow.Session without a
+// real nvim. It skips when no tmux server is reachable, matching how the
+// editwindow package tests the same thing.
+func requireTmuxAndFakeEditor(t *testing.T, exitCode int) {
+	t.Helper()
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skipf("tmux not on PATH: %v", err)
+	}
+	if err := exec.Command("tmux", "display-message", "-p", "#{session_name}").Run(); err != nil {
+		t.Skipf("no tmux session: %v", err)
+	}
+
+	script := filepath.Join(t.TempDir(), "fake-editor")
+	if err := os.WriteFile(script, []byte(fmt.Sprintf("#!/bin/sh\nexit %d\n", exitCode)), 0o755); err != nil {
+		t.Fatalf("write fake editor: %v", err)
+	}
+	t.Setenv("AGENT_TO_NVIM_EDITOR", script)
+}
+
+// TestSettleAcknowledgesEditorExit40 checks that an editor exit of exitSent is
+// treated like the user having sent the text themselves: nothing prints on
+// stdout, the pending edit is forgotten, and a scratch draft is dropped —
+// without running the diff/notes machinery a real edit would trigger.
+func TestSettleAcknowledgesEditorExit40(t *testing.T) {
+	requireTmuxAndFakeEditor(t, exitSent)
+
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	store, err := pending.OpenStore()
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+
+	draftPath := filepath.Join(store.DraftsDir(), "sent-draft.md")
+	if err := os.WriteFile(draftPath, []byte("hey team\n"), 0o600); err != nil {
+		t.Fatalf("write draft: %v", err)
+	}
+	handed, err := draft.Open(draftPath)
+	if err != nil {
+		t.Fatalf("draft.Open: %v", err)
+	}
+
+	edit, err := store.Begin(handed.Path())
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	session, err := editwindow.Start(editwindow.Request{
+		Path:         handed.Path(),
+		StartDir:     t.TempDir(),
+		Name:         "a2n-exit40-test",
+		ExitCodeFile: edit.Window.ExitCodeFile,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	edit.Window = session.Handle()
+	if err := store.Remember(edit, handed.Original()); err != nil {
+		t.Fatalf("Remember: %v", err)
+	}
+
+	var stdout strings.Builder
+	restoreStdout := redirectStdout(t, &stdout)
+	defer restoreStdout()
+
+	code, err := settle(store, edit, handed, session, settings{deadline: 15 * time.Second})
+	if err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+	if code != exitSent {
+		t.Errorf("settle() = %d, want %d", code, exitSent)
+	}
+	if stdout.String() != "" {
+		t.Errorf("stdout = %q, want nothing printed on exitSent", stdout.String())
+	}
+	if _, _, err := store.Find(edit.ID); err == nil {
+		t.Errorf("Find(%s) succeeded, want the edit forgotten", edit.ID)
+	}
+	if _, err := os.Stat(draftPath); !os.IsNotExist(err) {
+		t.Errorf("scratch draft still exists after exitSent: %v", err)
+	}
+}
+
+// redirectStdout captures os.Stdout for the duration of the test, so settle's
+// print-on-exitSent behavior (or lack of it) can be asserted without depending
+// on a terminal.
+func redirectStdout(t *testing.T, into *strings.Builder) func() {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	original := os.Stdout
+	os.Stdout = w
+
+	done := make(chan struct{})
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				into.Write(buf[:n])
+			}
+			if err != nil {
+				close(done)
+				return
+			}
+		}
+	}()
+
+	return func() {
+		os.Stdout = original
+		_ = w.Close()
+		<-done
+		_ = r.Close()
 	}
 }

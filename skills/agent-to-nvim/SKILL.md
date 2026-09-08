@@ -48,8 +48,8 @@ resolves, so writing there needs no cleanup and no prior Read.
 The drafts directory is only for text that comes back to you on stdout. If another
 agent or process will read the text from disk afterwards - a build brief, a spec, a
 config file - write it to a durable path first and hand over that real file, edited
-in place. A scratch draft is gone once the command exits with 0, 10, or 20, so a
-drafts path handed to someone else points at nothing.
+in place. A scratch draft is gone once the command exits with 0, 10, 20, or 40, so
+a drafts path handed to someone else points at nothing.
 
 Pick a name you haven't already used this session. If you have, add a word that
 tells the two apart rather than overwriting.
@@ -73,7 +73,9 @@ exit code exactly as the table below says.
 
 The tmux window opens focused, and the user's previous window is restored when
 they finish. Add `-focus=false` to open it in the background instead, which is
-only worth doing when the user asked to be left alone.
+only worth doing when the user asked to be left alone. If the user sends the
+text themselves - pasting it into Slack, say - they can type `:Sent` in nvim
+instead of saving and closing the window normally.
 
 ## Act on the exit code
 
@@ -85,6 +87,7 @@ The exit code is the whole result. Read it before anything else.
 | 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
 | 20 | Discarded | **Stop.** Don't send, commit, or post anything. Don't re-run. The file is left on disk in case they want it back. |
 | 30 | Deadline passed, still being edited | Tell the user nothing was lost and wait for them to say they're done. See below. |
+| 40 | Sent by the user themselves | Acknowledge in one line at most. Don't send, post, re-run, re-read, or ask what they want. The draft is finished; a scratch draft is removed. |
 | 1 | Could not run the edit | Report the error. |
 
 Two failure modes to avoid:
