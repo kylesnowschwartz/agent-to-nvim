@@ -51,12 +51,36 @@ func TestRecordExitCodePutsEditorArgumentsBeforeTheFile(t *testing.T) {
 	}
 }
 
-func TestStartWithoutTmuxFails(t *testing.T) {
-	t.Setenv("TMUX", "")
+func TestStartWithoutTmuxServerFails(t *testing.T) {
+	stubTmuxProbe(t, errors.New("no server running on /tmp/tmux-502/default"))
 	request := Request{Path: "/tmp/draft.md", ExitCodeFile: "/tmp/done-1"}
-	if _, err := Start(request); err == nil {
-		t.Fatal("expected an error when not running inside tmux")
+	_, err := Start(request)
+	if err == nil {
+		t.Fatal("expected an error when no tmux server is reachable")
 	}
+	if !strings.Contains(err.Error(), "no server running") {
+		t.Errorf("error %q does not carry tmux's own message", err)
+	}
+}
+
+// A process started by a daemon or background job runner has no TMUX variable
+// even though the tmux server is reachable; the check must not depend on it.
+func TestRequireTmuxIgnoresMissingTmuxVariable(t *testing.T) {
+	t.Setenv("TMUX", "")
+	stubTmuxProbe(t, nil)
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not on PATH")
+	}
+	if err := requireTmux(); err != nil {
+		t.Fatalf("requireTmux refused a reachable tmux server: %v", err)
+	}
+}
+
+func stubTmuxProbe(t *testing.T, result error) {
+	t.Helper()
+	previous := probeTmux
+	probeTmux = func() error { return result }
+	t.Cleanup(func() { probeTmux = previous })
 }
 
 func TestStartWithoutExitCodeFileFails(t *testing.T) {
@@ -220,11 +244,8 @@ func startEdit(t *testing.T) (path string, session *Session) {
 
 func requireTmuxAndEditor(t *testing.T) {
 	t.Helper()
-	if os.Getenv("TMUX") == "" {
-		t.Skip("not running inside tmux")
-	}
-	if _, err := exec.LookPath("tmux"); err != nil {
-		t.Skip("tmux not on PATH")
+	if err := requireTmux(); err != nil {
+		t.Skipf("no usable tmux: %v", err)
 	}
 	if _, err := exec.LookPath(editorName()); err != nil {
 		t.Skipf("%s not on PATH", editorName())

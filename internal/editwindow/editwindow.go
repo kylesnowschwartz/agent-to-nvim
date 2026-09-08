@@ -192,12 +192,31 @@ func (s *Session) finish() {
 	_ = os.Remove(s.handle.ExitCodeFile + ".tmp")
 }
 
+// requireTmux checks that a tmux server with a current session is reachable.
+// It asks tmux directly rather than reading the TMUX variable: processes started
+// by a daemon, a cron job, or a background job runner have no TMUX variable even
+// when the server is up, and every later tmux call here resolves the session
+// through the attached client the same way the probe does.
 func requireTmux() error {
-	if os.Getenv("TMUX") == "" {
-		return errors.New("no tmux session: agent-to-nvim opens the draft in a tmux window, so it must run inside tmux")
-	}
 	if _, err := exec.LookPath("tmux"); err != nil {
 		return fmt.Errorf("tmux not found on PATH: %w", err)
+	}
+	if err := probeTmux(); err != nil {
+		return fmt.Errorf("no tmux session: agent-to-nvim opens the draft in a tmux window, so a tmux server must be running: %w", err)
+	}
+	return nil
+}
+
+// probeTmux is replaced in tests that want to stand in for the tmux server.
+var probeTmux = func() error {
+	cmd := exec.Command("tmux", "display-message", "-p", "#{session_name}")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
 	}
 	return nil
 }
