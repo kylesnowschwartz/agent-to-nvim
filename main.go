@@ -410,10 +410,12 @@ func readBack(original, current string) handback {
 func announce(w io.Writer, back handback, showDiff bool) int {
 	if back.text == back.before && len(back.notes) == 0 {
 		say(w, "agent-to-nvim: draft saved unchanged\n")
+		sayScratchRemoved(w, back)
 		return exitUnchanged
 	}
 
 	say(w, "agent-to-nvim: %s\n", outcome(back))
+	sayScratchRemoved(w, back)
 	if back.textAt != "" {
 		say(w, "the edited text is saved in %s and is not printed — the report below is the whole change, so there is no need to read the file back\n", back.textAt)
 	}
@@ -427,6 +429,17 @@ func announce(w io.Writer, back handback, showDiff bool) int {
 		}
 	}
 	return exitEdited
+}
+
+// sayScratchRemoved warns that a scratch draft no longer exists on disk. The
+// caller still holds the path it wrote, and a path that looks valid invites reuse:
+// handing it to another agent as a brief, or reading it back. The text on stdout
+// is the only copy.
+func sayScratchRemoved(w io.Writer, back handback) {
+	if back.textAt != "" {
+		return
+	}
+	say(w, "the scratch file is removed; the text on stdout is the only copy\n")
 }
 
 // outcome says what came back, counting the notes. The count sits with the outcome

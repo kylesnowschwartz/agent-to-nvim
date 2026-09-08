@@ -125,6 +125,21 @@ func TestAnnounceReportsAnUntouchedDraftAsUnchanged(t *testing.T) {
 	if !strings.Contains(out.String(), "saved unchanged") {
 		t.Errorf("stderr = %q, want the unchanged message", out.String())
 	}
+	if !strings.Contains(out.String(), "scratch file is removed") {
+		t.Errorf("stderr = %q, want it to say the scratch file is gone", out.String())
+	}
+}
+
+// A file edited in place is still on disk, so it must not be reported as removed.
+func TestAnnounceDoesNotReportAnInPlaceFileAsRemoved(t *testing.T) {
+	back := readBack("Launch is Thursday.\n", "Launch is Thursday.\n")
+	back.textAt = "/home/someone/notes/brief.md"
+
+	var out strings.Builder
+	announce(&out, back, true)
+	if strings.Contains(out.String(), "removed") {
+		t.Errorf("stderr = %q, must not call an in-place file removed", out.String())
+	}
 }
 
 // The change report is about the draft, so a note added beside untouched prose

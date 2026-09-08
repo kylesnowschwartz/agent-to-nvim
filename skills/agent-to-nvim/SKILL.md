@@ -45,6 +45,12 @@ Write tool; don't try to pipe multiline text into the command. Don't run `mktemp
 first - the path above is fixed on purpose, and the draft is removed once the edit
 resolves, so writing there needs no cleanup and no prior Read.
 
+The drafts directory is only for text that comes back to you on stdout. If another
+agent or process will read the text from disk afterwards - a build brief, a spec, a
+config file - write it to a durable path first and hand over that real file, edited
+in place. A scratch draft is gone once the command exits with 0, 10, or 20, so a
+drafts path handed to someone else points at nothing.
+
 Pick a name you haven't already used this session. If you have, add a word that
 tells the two apart rather than overwriting.
 
