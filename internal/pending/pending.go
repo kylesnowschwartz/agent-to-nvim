@@ -111,6 +111,44 @@ func (s *Store) HoldPlan(name, plan string) (string, error) {
 	return path, nil
 }
 
+// MarkPlanAnswered records that the session's open plan request has been
+// answered in Claude Code itself, so the review holding that plan can close. A
+// session with no id has nothing to mark.
+func (s *Store) MarkPlanAnswered(sessionID string) error {
+	if sessionID == "" {
+		return nil
+	}
+	if err := writeFileAtomic(s.answeredPath(sessionID), nil); err != nil {
+		return fmt.Errorf("mark the plan answered: %w", err)
+	}
+	return nil
+}
+
+// PlanAnswered reports whether the session's plan request has been marked
+// answered since the mark was last cleared.
+func (s *Store) PlanAnswered(sessionID string) bool {
+	if sessionID == "" {
+		return false
+	}
+	_, err := os.Stat(s.answeredPath(sessionID))
+	return err == nil
+}
+
+// ClearPlanAnswered removes the session's mark. A review clears it before it
+// opens: the mark for a plan answered inside the review window lands after that
+// review's process has exited, and would otherwise end the session's next review
+// the instant it started.
+func (s *Store) ClearPlanAnswered(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	_ = os.Remove(s.answeredPath(sessionID))
+}
+
+func (s *Store) answeredPath(sessionID string) string {
+	return filepath.Join(s.PlansDir(), "answered-"+safeName(sessionID))
+}
+
 // safeName reduces a name from the harness to something that can only ever be one
 // file inside PlansDir.
 func safeName(name string) string {

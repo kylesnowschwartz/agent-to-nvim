@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -350,5 +351,55 @@ func TestKeepNotesWritesAReadableCopy(t *testing.T) {
 	}
 	if want := "notes:\n>> shorten this\n"; string(kept) != want {
 		t.Errorf("kept notes = %q, want %q", kept, want)
+	}
+}
+
+func TestPlanAnsweredMarkRoundTrips(t *testing.T) {
+	store, _ := openTestStore(t)
+	const session = "e9b6c628-490a-4ebd-87f2-77e2d5d34fd1"
+
+	if store.PlanAnswered(session) {
+		t.Fatal("PlanAnswered() = true before anything was marked")
+	}
+	if err := store.MarkPlanAnswered(session); err != nil {
+		t.Fatalf("MarkPlanAnswered() error = %v", err)
+	}
+	if !store.PlanAnswered(session) {
+		t.Error("PlanAnswered() = false after marking")
+	}
+	if store.PlanAnswered("some-other-session") {
+		t.Error("PlanAnswered() = true for a session never marked")
+	}
+	store.ClearPlanAnswered(session)
+	if store.PlanAnswered(session) {
+		t.Error("PlanAnswered() = true after clearing")
+	}
+}
+
+func TestPlanAnsweredMarkStaysInsideThePlansDirectory(t *testing.T) {
+	store, _ := openTestStore(t)
+	if err := store.MarkPlanAnswered("../../escape"); err != nil {
+		t.Fatalf("MarkPlanAnswered() error = %v", err)
+	}
+	entries, err := os.ReadDir(store.PlansDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || !strings.HasPrefix(entries[0].Name(), "answered-") {
+		t.Errorf("PlansDir holds %v, want one answered- mark", entries)
+	}
+}
+
+func TestPlanAnsweredWithoutASessionIsNothing(t *testing.T) {
+	store, _ := openTestStore(t)
+	if err := store.MarkPlanAnswered(""); err != nil {
+		t.Fatalf("MarkPlanAnswered(\"\") error = %v", err)
+	}
+	if store.PlanAnswered("") {
+		t.Error("PlanAnswered(\"\") = true")
+	}
+	entries, _ := os.ReadDir(store.PlansDir())
+	if len(entries) != 0 {
+		t.Errorf("PlansDir holds %v, want nothing", entries)
 	}
 }

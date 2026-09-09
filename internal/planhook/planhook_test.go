@@ -123,3 +123,38 @@ func TestAllowLeavesTheRequestsInputAlone(t *testing.T) {
 		t.Errorf("the request's plan = %v, want it untouched", input["plan"])
 	}
 }
+
+func TestReadEventCarriesTheSession(t *testing.T) {
+	event, err := ReadEvent(strings.NewReader(`{"session_id": "abc-123", "tool_input": {"plan": "# Launch\n"}}`))
+	if err != nil {
+		t.Fatalf("ReadEvent() error = %v", err)
+	}
+	if event.SessionID != "abc-123" {
+		t.Errorf("SessionID = %q, want abc-123", event.SessionID)
+	}
+}
+
+// The notice that a plan was answered names the session and nothing about the
+// plan, so it must read cleanly without one.
+func TestReadAnsweredAcceptsANoticeWithoutAPlan(t *testing.T) {
+	notice := `{"hook_event_name": "PostToolUse", "tool_name": "ExitPlanMode", "session_id": "abc-123", "tool_input": {}}`
+	session, err := ReadAnswered(strings.NewReader(notice))
+	if err != nil {
+		t.Fatalf("ReadAnswered() error = %v", err)
+	}
+	if session != "abc-123" {
+		t.Errorf("ReadAnswered() = %q, want abc-123", session)
+	}
+}
+
+func TestReadAnsweredTreatsAnEmptyNoticeAsNoSession(t *testing.T) {
+	for _, body := range []string{"", " \n", "{}"} {
+		session, err := ReadAnswered(strings.NewReader(body))
+		if err != nil || session != "" {
+			t.Errorf("ReadAnswered(%q) = %q, %v; want \"\", nil", body, session, err)
+		}
+	}
+	if _, err := ReadAnswered(strings.NewReader("not json")); err == nil {
+		t.Error("ReadAnswered(not json) error = nil, want a decode failure")
+	}
+}

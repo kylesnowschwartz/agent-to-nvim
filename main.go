@@ -24,8 +24,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
@@ -74,7 +76,7 @@ func run(args []string) int {
 	diff := flags.Bool("diff", true, "report what changed on stderr")
 
 	command := ""
-	if len(args) > 0 && (args[0] == "collect" || args[0] == "plan") {
+	if len(args) > 0 && (args[0] == "collect" || args[0] == "plan" || args[0] == "plan-answered") {
 		command, args = args[0], args[1:]
 	}
 	if err := flags.Parse(args); err != nil {
@@ -88,6 +90,13 @@ func run(args []string) int {
 			return exitFailed
 		}
 		return reviewPlan(set)
+	}
+	if command == "plan-answered" {
+		if flags.NArg() != 0 {
+			usage()
+			return exitFailed
+		}
+		return notePlanAnswered()
 	}
 
 	if flags.NArg() != 1 {
@@ -183,11 +192,12 @@ func collect(id string, set settings) (int, error) {
 // reviewPlan answers Claude Code's request to leave plan mode: it hands the plan
 // to a human and turns what they did with it into the answer.
 //
-// Waiting is unbounded. The answer has to be written by this process, so unlike a
-// draft handover there is nobody to hand a deadline over to — no collect can
-// answer on its behalf. Claude Code's own hook timeout bounds it instead, and a
-// review it gives up waiting for falls back to Claude Code asking about the plan
-// itself.
+// The wait has no deadline of its own. The answer has to be written by this
+// process, so unlike a draft handover there is nobody to hand a deadline over to
+// — no collect can answer on its behalf. It ends in one of three ways: the human
+// closes the window, Claude Code's own dialog answers first (see
+// errAnsweredInClaudeCode), or Claude Code's hook timeout gives up on it and
+// Claude Code asks about the plan itself.
 func reviewPlan(set settings) int {
 	event, err := planhook.ReadEvent(os.Stdin)
 	if errors.Is(err, planhook.ErrNothingAsked) {
@@ -198,10 +208,46 @@ func reviewPlan(set settings) int {
 	}
 
 	review, err := readPlan(event, set)
+	if errors.Is(err, errAnsweredInClaudeCode) {
+		fmt.Fprintln(os.Stderr, "agent-to-nvim: the plan was answered in Claude Code; closed the review window")
+		return exitAnswered
+	}
 	if err != nil {
 		return standDown(err)
 	}
 	if err := review.Answer(event.ToolInput).Send(os.Stdout); err != nil {
+		return standDown(err)
+	}
+	return exitAnswered
+}
+
+// errAnsweredInClaudeCode reports that Claude Code's own dialog answered the plan
+// while it was open here, so this review has no verdict to give and its window
+// has been closed.
+//
+// Claude Code asks about a plan in its dialog and through this hook at once. An
+// answer given in the dialog reaches this process two ways: a refusal ends the
+// hook with SIGTERM, and an approval fires a second hook, `plan-answered`, which
+// leaves a mark in the store for the session. Either way the plan is settled and
+// the window is only in the way.
+var errAnsweredInClaudeCode = errors.New("the plan was answered in Claude Code's own dialog")
+
+// notePlanAnswered is the `plan-answered` hook: it marks the session's plan
+// request as answered so the review holding that plan closes its window. It
+// answers nothing itself, so stdout stays empty.
+func notePlanAnswered() int {
+	sessionID, err := planhook.ReadAnswered(os.Stdin)
+	if err != nil {
+		return standDown(err)
+	}
+	if sessionID == "" {
+		return exitAnswered
+	}
+	store, err := pending.OpenStore()
+	if err != nil {
+		return standDown(err)
+	}
+	if err := store.MarkPlanAnswered(sessionID); err != nil {
 		return standDown(err)
 	}
 	return exitAnswered
@@ -251,6 +297,7 @@ func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
 	recorded, askedForAuto := path+".rc", path+".auto"
 	_ = os.Remove(recorded)
 	_ = os.Remove(askedForAuto)
+	store.ClearPlanAnswered(event.SessionID)
 
 	session, err := editwindow.Start(editwindow.Request{
 		Path:         path,
@@ -264,7 +311,18 @@ func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
 		return planhook.Review{}, err
 	}
 
-	editorCode, err := session.Wait(context.Background())
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	go endWhenAnsweredInClaudeCode(ctx, cancel, store, event.SessionID)
+
+	editorCode, err := session.Wait(ctx)
+	if errors.Is(err, editwindow.ErrDeadline) && errors.Is(context.Cause(ctx), errAnsweredInClaudeCode) {
+		session.Close()
+		_ = os.Remove(askedForAuto)
+		_ = os.Remove(path)
+		store.ClearPlanAnswered(event.SessionID)
+		return planhook.Review{}, errAnsweredInClaudeCode
+	}
 	if err != nil && !errors.Is(err, editwindow.ErrWindowClosed) {
 		return planhook.Review{}, err
 	}
@@ -308,6 +366,41 @@ func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
 		Notes:     left,
 		Auto:      auto,
 	}, nil
+}
+
+// answeredPollInterval is how often the store is checked for the mark that
+// `plan-answered` leaves.
+const answeredPollInterval = 250 * time.Millisecond
+
+// endWhenAnsweredInClaudeCode cancels the wait, with errAnsweredInClaudeCode as
+// the cause, once Claude Code's own dialog has answered the plan: on the SIGTERM
+// a refusal sends this hook, or on the mark an approval's `plan-answered` hook
+// leaves for the session. It returns when the wait ends for any other reason.
+func endWhenAnsweredInClaudeCode(ctx context.Context, cancel context.CancelCauseFunc, store *pending.Store, sessionID string) {
+	ended := make(chan os.Signal, 1)
+	signal.Notify(ended, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	defer signal.Stop(ended)
+
+	var marked <-chan time.Time
+	if sessionID != "" {
+		tick := time.NewTicker(answeredPollInterval)
+		defer tick.Stop()
+		marked = tick.C
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ended:
+			cancel(errAnsweredInClaudeCode)
+			return
+		case <-marked:
+			if store.PlanAnswered(sessionID) {
+				cancel(errAnsweredInClaudeCode)
+				return
+			}
+		}
+	}
 }
 
 // startDir is where the editor opens, so a file named in the plan can be followed
@@ -490,6 +583,7 @@ func usage() {
 usage: agent-to-nvim [flags] <file>
        agent-to-nvim collect [flags] <id>
        agent-to-nvim plan [flags]
+       agent-to-nvim plan-answered
 
 Opens <file> in nvim in a new tmux window, blocks until the edit finishes, and
 prints the resulting text on stdout. If the deadline passes first, nvim keeps
@@ -504,7 +598,11 @@ to be confirmed, <leader>c leaves the answer to Claude Code's own dialog and dro
 any edits made here, <leader>r sends it back to be revised, and <leader>n and
 <leader>N open a note about this part of the plan or all of it. The window says so
 along the top.
-Waiting is unbounded there — Claude Code's own hook timeout is what bounds it.
+Waiting has no deadline of its own there — Claude Code's hook timeout bounds it.
+
+"plan-answered" is the companion hook, run once Claude Code has acted on a plan.
+It tells an open review that the plan was answered in Claude Code's own dialog,
+so the window closes on its own. It reads the event on stdin and prints nothing.
 
 What the human changed is reported on stderr, marked word by word:
 

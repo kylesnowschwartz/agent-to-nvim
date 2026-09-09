@@ -142,6 +142,13 @@ func (s *Session) Wait(ctx context.Context) (int, error) {
 	}
 }
 
+// Close kills the edit window and tidies up after it, for a caller whose edit has
+// been settled elsewhere and has nothing left to wait for.
+func (s *Session) Close() {
+	_, _ = tmuxOutput("kill-window", "-t", s.handle.WindowID)
+	s.finish()
+}
+
 // recordExitCode builds the shell command the window runs: nvim on the draft,
 // then its exit code written to the exit-code file. The write is a temp-file
 // rename so the waiting process never reads a half-written code.

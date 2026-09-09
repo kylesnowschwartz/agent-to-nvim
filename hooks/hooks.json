@@ -13,6 +13,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-to-nvim plan-answered",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

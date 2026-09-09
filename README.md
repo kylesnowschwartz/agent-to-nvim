@@ -61,9 +61,10 @@ The Go side has no such gap — `make install` is live immediately.
 agent-to-nvim [flags] <file>
 agent-to-nvim collect [flags] <id>
 agent-to-nvim plan [flags]
+agent-to-nvim plan-answered
 ```
 
-`plan` is the Claude Code plan-review hook — see [Reviewing a
+`plan` and `plan-answered` are the Claude Code plan-review hooks — see [Reviewing a
 plan](#reviewing-a-plan). The rest of this describes handing a draft over.
 
 The file is edited in place, so an edit to a real project file is saved where it
@@ -283,6 +284,13 @@ closes, the tool writes no answer, and the dialog is left to decide. The plan is
 read in nvim and answered in Claude Code, which is why edits made in the window are
 dropped — the dialog approves the plan as it was submitted.
 
+Answering in Claude Code's own dialog — accepting the plan or asking for changes
+— closes the window here, since the plan is settled and the window has nothing
+left to decide. Nothing typed in it is used. Claude Code tells this tool two
+ways: a plan turned down in the dialog ends the review's hook process, and a plan
+accepted there runs `agent-to-nvim plan-answered`, a second hook the plugin
+registers, which the open review watches for.
+
 Notes travel either way, and which key you pressed decides what they are for:
 
 - **Approved with notes** — the notes go into the plan under a `## Notes from the
@@ -312,7 +320,8 @@ Code to ask about the plan its own way rather than acting on a verdict nobody ga
 ### Wiring it up
 
 Installing the plugin (see [Install](#install)) registers the hook against Claude
-Code's plan-approval request. There is nothing to add to `settings.json` by hand,
+Code's plan-approval request, and `plan-answered` against the tool call that
+follows an approval. There is nothing to add to `settings.json` by hand,
 and adding it there as well would answer the same request twice.
 
 `hooks/hooks.json` gives Claude Code a day to wait, which is longer than any review

@@ -25,6 +25,9 @@ type Event struct {
 	ToolName  string         `json:"tool_name"`
 	ToolInput map[string]any `json:"tool_input"`
 	Cwd       string         `json:"cwd"`
+	// SessionID names the Claude Code session asking. It is the one field the
+	// request and the later notice that the plan was answered have in common.
+	SessionID string `json:"session_id"`
 }
 
 // planKey and planFileKey are ExitPlanMode's input fields: the plan as text, and
@@ -54,6 +57,25 @@ func ReadEvent(r io.Reader) (Event, error) {
 		return Event{}, ErrNothingAsked
 	}
 	return event, nil
+}
+
+// ReadAnswered decodes the notice Claude Code sends once a plan request has been
+// answered — a PostToolUse event for the same tool, which carries the session
+// and nothing about the plan. It returns the session the answer belongs to, or
+// "" when the notice named none.
+func ReadAnswered(r io.Reader) (string, error) {
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return "", fmt.Errorf("read the plan-answered notice: %w", err)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return "", nil
+	}
+	var event Event
+	if err := json.Unmarshal(body, &event); err != nil {
+		return "", fmt.Errorf("decode the plan-answered notice: %w", err)
+	}
+	return event.SessionID, nil
 }
 
 // ErrNothingAsked reports that the request carried no plan, so there is nothing
