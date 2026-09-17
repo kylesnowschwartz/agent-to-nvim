@@ -1,0 +1,30 @@
+{
+  "description": "Hand a plan to nvim for review before Claude Code acts on it",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/agent-to-nvim\" plan",
+            "timeout": 7200,
+            "statusMessage": "Reviewing the plan in nvim"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/agent-to-nvim\" plan-answered",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
