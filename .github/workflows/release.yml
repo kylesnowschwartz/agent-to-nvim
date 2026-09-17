@@ -21,7 +21,9 @@ jobs:
       - name: Check
         run: make test version-check
 
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
 
       - name: Build the release binaries
         run: make release-build TAG=${{ github.ref_name }}
