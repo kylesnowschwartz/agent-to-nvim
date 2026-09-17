@@ -1,0 +1,31 @@
+#!/bin/sh
+# Runs the agent-to-nvim binary built for this machine. The plugin ships one
+# binary per platform beside this script, and Claude Code registers this path in
+# the hook command, so the choice happens here rather than at install time.
+set -eu
+
+case $(uname -s) in
+    Darwin) operating_system=darwin ;;
+    Linux) operating_system=linux ;;
+    *)
+        echo "agent-to-nvim: no binary for $(uname -s) $(uname -m)" >&2
+        exit 1
+        ;;
+esac
+
+case $(uname -m) in
+    arm64 | aarch64) architecture=arm64 ;;
+    x86_64 | amd64) architecture=amd64 ;;
+    *)
+        echo "agent-to-nvim: no binary for $(uname -s) $(uname -m)" >&2
+        exit 1
+        ;;
+esac
+
+binary="$(dirname "$0")/agent-to-nvim_${operating_system}_${architecture}"
+if [ ! -x "$binary" ]; then
+    echo "agent-to-nvim: no binary at $binary; run make build or install the plugin from the dist branch" >&2
+    exit 1
+fi
+
+exec "$binary" "$@"

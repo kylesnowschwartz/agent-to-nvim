@@ -57,7 +57,7 @@ tells the two apart rather than overwriting.
 ## Run it
 
 ```
-agent-to-nvim ~/.local/state/agent-to-nvim/drafts/slack-launch-announcement.md
+${CLAUDE_PLUGIN_ROOT}/bin/agent-to-nvim ~/.local/state/agent-to-nvim/drafts/slack-launch-announcement.md
 ```
 
 **Run it as a background task** (`run_in_background: true` on the Bash tool). The
@@ -100,8 +100,9 @@ Two failure modes to avoid:
   up after its ten-minute deadline. Do NOT re-run anything in a wait loop.
   Instead:
 
-  1. Note the `collect` command printed on stderr (e.g. `agent-to-nvim collect
-     5ce4bf832a`).
+  1. Note the `collect` command printed on stderr (e.g.
+     `${CLAUDE_PLUGIN_ROOT}/bin/agent-to-nvim collect 5ce4bf832a`). It names the
+     binary by its full path; run it exactly as printed.
   2. Tell the user, briefly: "The process waiting on your edit timed out -
      that's harmless, your draft and edits are safe. Just message me when you're
      done in nvim." Then end your turn and wait for their reply.
@@ -180,7 +181,8 @@ Each note is either an instruction or an opening for discussion, and telling the
 two apart is your job:
 
 - **A clear instruction** ("make this shorter", "drop the last para") is yours to
-  carry out. Make the change and hand the draft back with `agent-to-nvim` rather
+  carry out. Make the change and hand the draft back with
+  `${CLAUDE_PLUGIN_ROOT}/bin/agent-to-nvim` rather
   than sending it.
 - **A question, doubt, or open point** ("is this the right channel?", "check that
   with ops", "not sure about this framing") wants a conversation before any
@@ -236,8 +238,7 @@ is large and the change doesn't matter to what happens next.
 
 ## Requirements
 
-The command needs tmux (it opens a real tmux window rather than a popup, so the
-edit survives a disconnect) and nvim on `PATH`. It exits 1 with a clear message
-when either is missing.
-
-Install with `go install github.com/kylesnowschwartz/agent-to-nvim@latest`.
+The plugin ships the binary at `${CLAUDE_PLUGIN_ROOT}/bin/agent-to-nvim`, which is
+not on `PATH`: run it by that path. It needs tmux (it opens a real tmux window
+rather than a popup, so the edit survives a disconnect) and nvim on `PATH`, and
+exits 1 with a clear message when either is missing.

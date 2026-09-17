@@ -1,0 +1,35 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check
+        run: make test version-check
+
+      - uses: golangci/golangci-lint-action@v6
+
+      - name: Build the release binaries
+        run: make release-build TAG=${{ github.ref_name }}
+
+      # The dist branch is what a marketplace install clones, so publishing it
+      # is what makes the tag installable.
+      - name: Publish the dist branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          ./scripts/publish-dist.sh "${{ github.ref_name }}" dist

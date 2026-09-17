@@ -13,20 +13,15 @@ Hey team — launch is Thursday, not Wednesday.
 
 ## Install
 
-Requires `tmux` and `nvim` on `PATH`.
-
-```
-go install github.com/kylesnowschwartz/agent-to-nvim@latest
-```
-
-Then in Claude Code, which adds the plan-review hook and the drafting skill:
+Requires `tmux` and `nvim` on `PATH`. In Claude Code:
 
 ```
 /plugin marketplace add kylesnowschwartz/agent-to-nvim
 /plugin install agent-to-nvim@agent-to-nvim
 ```
 
-Restart Claude Code once. The binary must stay on `PATH`: the hook calls it by name.
+Restart Claude Code once. The install brings the binary with it, along with the
+plan-review hook and the drafting skill.
 
 ## Handing over a draft
 
@@ -34,6 +29,9 @@ Restart Claude Code once. The binary must stay on `PATH`: the hook calls it by n
 agent-to-nvim [flags] <file>
 agent-to-nvim collect [flags] <id>
 ```
+
+The examples use the short name; the installed binary lives at
+`bin/agent-to-nvim` inside the plugin directory and is not on `PATH`.
 
 - **Files are edited in place.** Write the draft with a file tool and pass the path.
 - **Scratch drafts** go in `~/.local/state/agent-to-nvim/drafts/`. They are removed
@@ -118,6 +116,11 @@ headed outside the conversation.
 
 ## Working on it
 
-`make install` builds the binary. `make check` runs tests, lint, and the version
-consistency check. Hook or skill changes reach Claude Code only after
+`make install` builds the binary and installs the plugin from this checkout
+through a generated dev marketplace. `make check` runs tests, lint, and the
+version consistency check. Hook or skill changes reach Claude Code only after
 `/plugin uninstall` and `/plugin install` again.
+
+`make release TAG=vX.Y.Z` tags main once the tag matches the version in both
+manifests; GitHub Actions then cross-compiles the binaries and publishes the
+plugin tree to the `dist` branch, which is what an install clones.

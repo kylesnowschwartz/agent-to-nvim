@@ -342,3 +342,22 @@ func redirectStdout(t *testing.T, into *strings.Builder) func() {
 		_ = r.Close()
 	}
 }
+
+// TestResumeCommandNamesThisBinaryByPath checks the resume command points at the
+// running binary rather than a bare name: inside the Claude Code plugin the
+// binary sits in the plugin directory and is not on PATH.
+func TestResumeCommandNamesThisBinaryByPath(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Skipf("os.Executable: %v", err)
+	}
+
+	got := resumeCommand("5ce4bf832a")
+	want := self + " collect 5ce4bf832a"
+	if got != want {
+		t.Errorf("resumeCommand() = %q, want %q", got, want)
+	}
+	if !filepath.IsAbs(strings.Fields(got)[0]) {
+		t.Errorf("resumeCommand() names %q, want an absolute path", strings.Fields(got)[0])
+	}
+}

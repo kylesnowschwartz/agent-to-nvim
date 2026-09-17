@@ -55,6 +55,10 @@ const (
 	exitAnswered = 0
 )
 
+// version names the release this binary was built from. A release build sets it
+// with -ldflags; a plain `go build` reports dev.
+var version = "dev"
+
 func main() {
 	os.Exit(run(os.Args[1:]))
 }
@@ -74,6 +78,7 @@ func run(args []string) int {
 	deadline := flags.Duration("deadline", 10*time.Minute,
 		"how long to wait before handing back a collect id; 0 waits indefinitely")
 	diff := flags.Bool("diff", true, "report what changed on stderr")
+	showVersion := flags.Bool("version", false, "print the version and exit")
 
 	command := ""
 	if len(args) > 0 && (args[0] == "collect" || args[0] == "plan" || args[0] == "plan-answered") {
@@ -81,6 +86,10 @@ func run(args []string) int {
 	}
 	if err := flags.Parse(args); err != nil {
 		return exitFailed
+	}
+	if *showVersion {
+		fmt.Println(version)
+		return 0
 	}
 
 	set := settings{focus: *focus, deadline: *deadline, diff: *diff}
@@ -416,6 +425,17 @@ func startDir(event planhook.Event) string {
 	return here
 }
 
+// resumeCommand is the command line that picks a still-open edit back up. The
+// Claude Code plugin keeps the binary in its own directory rather than on PATH,
+// so the caller is handed the path of the binary it is already running.
+func resumeCommand(id string) string {
+	self, err := os.Executable()
+	if err != nil {
+		self = "agent-to-nvim"
+	}
+	return fmt.Sprintf("%s collect %s", self, id)
+}
+
 // settle waits for the edit to finish and turns the result into an exit code.
 func settle(
 	store *pending.Store,
@@ -435,8 +455,8 @@ func settle(
 	switch {
 	case errors.Is(err, editwindow.ErrDeadline):
 		fmt.Fprintf(os.Stderr,
-			"agent-to-nvim: still being edited after %s; the draft is safe — tell the user to say when they're done, then run: agent-to-nvim collect %s\n",
-			set.deadline, edit.ID)
+			"agent-to-nvim: still being edited after %s; the draft is safe — tell the user to say when they're done, then run: %s\n",
+			set.deadline, resumeCommand(edit.ID))
 		return exitStillOpen, nil
 	case errors.Is(err, editwindow.ErrWindowClosed):
 		store.Forget(edit.ID)
@@ -648,6 +668,7 @@ flags:
   -deadline=10m  how long to wait before handing back a collect id (0 waits forever)
   -diff=false    do not report what changed
   -focus=false   open the edit window in the background
+  -version       print the version and exit
 
 `)
 }

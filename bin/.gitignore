@@ -1,0 +1,3 @@
+# The platform binaries belong to the machine that built them or to the release
+# that shipped them, never to this branch; the launcher beside them is committed.
+agent-to-nvim_*

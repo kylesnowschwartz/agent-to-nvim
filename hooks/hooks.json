@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "agent-to-nvim plan",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/agent-to-nvim\" plan",
             "timeout": 7200,
             "statusMessage": "Reviewing the plan in nvim"
           }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "agent-to-nvim plan-answered",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/agent-to-nvim\" plan-answered",
             "timeout": 10
           }
         ]
