@@ -45,6 +45,7 @@ The examples use the short name; the installed binary lives at
 | `-deadline` | `10m` | How long to wait before handing back a collect id. `0` waits forever. |
 | `-diff` | `true` | Report what changed on stderr. |
 | `-focus` | `true` | Focus the edit window, then restore the previous one. |
+| `-ignore-whitespace` | `true` | Compare words only, so indentation, trailing spaces, blank lines, and re-wrapping are not changes. `false` compares lines exactly. |
 
 `AGENT_TO_NVIM_EDITOR` overrides nvim. `XDG_STATE_HOME` moves the state directory.
 
@@ -77,6 +78,9 @@ notes:
 
 The diff on stderr marks words, not lines: `~` is a changed line with
 `[-removed-]` and `{+added+}`, `-` and `+` are whole lines, two spaces is context.
+Whitespace is not a change: a draft an editor formatter re-wrapped or re-indented
+on save reports only the words that moved, and one where only whitespace changed
+exits 10. The text itself comes back exactly as saved.
 
 ### Long edits
 

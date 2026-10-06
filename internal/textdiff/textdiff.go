@@ -5,6 +5,10 @@
 // Changed lines are marked word by word. Drafts are prose, and a line-level diff
 // turns a one-word edit into two rewritten lines — which is the noise that sends
 // an agent back to guessing.
+//
+// By default whitespace is not a change at all: the drafts are compared as
+// sequences of words, so an editor formatter that re-indents, trims, or re-wraps
+// on save does not bury the human's edit under lines nobody meant to touch.
 package textdiff
 
 import (
@@ -20,6 +24,11 @@ const contextLines = 1
 // maxRenderedLines bounds the report. A wholesale rewrite has nothing useful to
 // say line by line, and the edited text itself is on stdout either way.
 const maxRenderedLines = 200
+
+// TruncatedNote ends a report cut short at maxRenderedLines. It names no place
+// for the rest because that depends on the caller: a scratch draft's text is on
+// stdout, a file edited in place holds its own.
+const TruncatedNote = "… diff truncated; the rest of the change is in the edited text"
 
 // pairBudget bounds the quadratic alignment. Drafts sit far below it; anything
 // above is reported as one wholesale replacement rather than left to grind.
@@ -47,7 +56,7 @@ func Unified(before, after string) string {
 		return ""
 	}
 	rows := align(splitLines(before), splitLines(after))
-	return render(rows)
+	return render(rows, hunkLines)
 }
 
 func splitLines(text string) []string {
@@ -144,8 +153,9 @@ func wholesale(was, now []string, wasOffset, nowOffset int) []row {
 }
 
 // render turns the aligned rows into hunks: each change with contextLines of
-// unchanged text around it, under a header naming the line it starts at.
-func render(rows []row) string {
+// unchanged text around it, under a header naming the line it starts at. lines
+// formats the rows of one hunk for printing.
+func render(rows []row, lines func([]row) []string) string {
 	var out strings.Builder
 	printed := 0
 	truncated := false
@@ -162,7 +172,7 @@ func render(rows []row) string {
 		}
 		fmt.Fprintf(&out, "@@ line %d @@\n", headerLine(rows, start))
 
-		for _, text := range hunkLines(rows[start:end]) {
+		for _, text := range lines(rows[start:end]) {
 			if printed >= maxRenderedLines {
 				truncated = true
 				break
@@ -178,7 +188,7 @@ func render(rows []row) string {
 	}
 
 	if truncated {
-		out.WriteString("… diff truncated; the full edited text is on stdout\n")
+		out.WriteString(TruncatedNote + "\n")
 	}
 	return out.String()
 }

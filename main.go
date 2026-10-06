@@ -45,7 +45,7 @@ import (
 const (
 	exitEdited    = 0  // saved with changes — use the printed text
 	exitFailed    = 1  // could not run the edit at all
-	exitUnchanged = 10 // saved byte-identical — the draft was approved as-is
+	exitUnchanged = 10 // saved with the same words — the draft was approved as-is
 	exitAborted   = 20 // discarded via :cq or a killed window — do not proceed
 	exitStillOpen = 30 // deadline passed, still being edited — collect it
 	exitSent      = 40 // the user sent the text themselves — acknowledge and stop
@@ -69,6 +69,7 @@ type settings struct {
 	focus    bool
 	deadline time.Duration
 	diff     bool
+	compare  textdiff.Comparison
 }
 
 func run(args []string) int {
@@ -78,6 +79,8 @@ func run(args []string) int {
 	deadline := flags.Duration("deadline", 10*time.Minute,
 		"how long to wait before handing back a collect id; 0 waits indefinitely")
 	diff := flags.Bool("diff", true, "report what changed on stderr")
+	ignoreWhitespace := flags.Bool("ignore-whitespace", true,
+		"compare words only, so indentation, blank lines, and re-wrapping are not changes")
 	showVersion := flags.Bool("version", false, "print the version and exit")
 
 	command := ""
@@ -92,7 +95,12 @@ func run(args []string) int {
 		return 0
 	}
 
-	set := settings{focus: *focus, deadline: *deadline, diff: *diff}
+	set := settings{
+		focus:    *focus,
+		deadline: *deadline,
+		diff:     *diff,
+		compare:  textdiff.Comparison{WhitespaceCounts: !*ignoreWhitespace},
+	}
 	if command == "plan" {
 		if flags.NArg() != 0 {
 			usage()
@@ -369,11 +377,12 @@ func readPlan(event planhook.Event, set settings) (planhook.Review, error) {
 	}
 
 	return planhook.Review{
-		Approved:  saved,
-		Plan:      plan,
-		Submitted: event.Plan(),
-		Notes:     left,
-		Auto:      auto,
+		Approved:   saved,
+		Plan:       plan,
+		Submitted:  event.Plan(),
+		Notes:      left,
+		Auto:       auto,
+		Comparison: set.compare,
 	}, nil
 }
 
@@ -512,7 +521,7 @@ func settle(
 	// their words on disk, and nothing has printed them anywhere else.
 	store.DropScratch(handed.Path())
 
-	return announce(os.Stderr, back, set.diff), nil
+	return announce(os.Stderr, back, set), nil
 }
 
 // handback is what came back from the human: the draft text to hand on, the
@@ -536,22 +545,37 @@ func readBack(original, current string) handback {
 
 // announce reports the outcome and returns the exit code for it. Unchanged means
 // nothing came back to act on, so a draft left word for word alone but annotated
-// counts as edited: the notes are the edit.
-func announce(w io.Writer, back handback, showDiff bool) int {
-	if back.text == back.before && len(back.notes) == 0 {
-		say(w, "agent-to-nvim: draft saved unchanged\n")
+// counts as edited: the notes are the edit. A draft whose only change is
+// whitespace is unchanged too, unless set says whitespace counts: that is an
+// editor formatter at work, not the human.
+func announce(w io.Writer, back handback, set settings) int {
+	changed := !set.compare.Same(back.before, back.text)
+	if !changed && len(back.notes) == 0 {
+		if back.text == back.before {
+			say(w, "agent-to-nvim: draft saved unchanged\n")
+		} else {
+			say(w, "agent-to-nvim: draft saved unchanged apart from whitespace — an editor formatter likely ran\n")
+		}
 		sayScratchRemoved(w, back)
 		return exitUnchanged
 	}
 
-	say(w, "agent-to-nvim: %s\n", outcome(back))
+	say(w, "agent-to-nvim: %s\n", outcome(back, changed))
 	sayScratchRemoved(w, back)
-	if back.textAt != "" {
+	report := ""
+	if changed && set.diff {
+		report = set.compare.Report(back.before, back.text)
+	}
+	switch {
+	case back.textAt == "":
+	case changed && !set.diff:
+		say(w, "the edited text is saved in %s and is not printed — no change report was asked for, so read the file for the edit\n", back.textAt)
+	case strings.Contains(report, textdiff.TruncatedNote):
+		say(w, "the edited text is saved in %s and is not printed — the report below is cut short, so read the file for the rest of the change\n", back.textAt)
+	default:
 		say(w, "the edited text is saved in %s and is not printed — the report below is the whole change, so there is no need to read the file back\n", back.textAt)
 	}
-	if back.text != back.before && showDiff {
-		say(w, "%s", textdiff.Unified(back.before, back.text))
-	}
+	say(w, "%s", report)
 	if len(back.notes) > 0 {
 		say(w, "\n%s", notereport.Render(back.notes))
 		if back.keptAt != "" {
@@ -575,9 +599,9 @@ func sayScratchRemoved(w io.Writer, back handback) {
 // outcome says what came back, counting the notes. The count sits with the outcome
 // rather than at the head of the notes section, where a number would read as one
 // of the draft line numbers under it.
-func outcome(back handback) string {
+func outcome(back handback, changed bool) string {
 	what := "draft edited"
-	if back.text == back.before {
+	if !changed {
 		what = "draft text unchanged"
 	}
 	switch len(back.notes) {
@@ -657,7 +681,7 @@ A run of note lines is one note. Later lines are indented under the first.
 
 exit codes:
   0   saved with changes
-  10  saved unchanged (approved as-is)
+  10  saved unchanged, or changed only in whitespace (approved as-is)
   20  discarded (:cq or the window was killed)
   30  deadline passed, still being edited — run the printed collect command
       once the user says they are done; do not re-run it in a wait loop
@@ -667,6 +691,9 @@ exit codes:
 flags:
   -deadline=10m  how long to wait before handing back a collect id (0 waits forever)
   -diff=false    do not report what changed
+  -ignore-whitespace=false
+                 count indentation, trailing spaces, blank lines, and line
+                 wrapping as changes, in the report and in exit 10
   -focus=false   open the edit window in the background
   -version       print the version and exit
 

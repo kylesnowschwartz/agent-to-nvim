@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/notes"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/textdiff"
 )
 
 // submitted stands in for the tool input a request arrives with. The extra field
@@ -201,6 +202,31 @@ func TestADiscardedPlanWithNothingSaidAsksWhatTheyWant(t *testing.T) {
 	}
 	if strings.Contains(got.Message, "What the reviewer said") {
 		t.Errorf("message = %q, want no empty brief section", got.Message)
+	}
+}
+
+// A formatter that re-wrapped the plan on save did not change it, so a discard
+// with nothing said still asks what the reviewer wants.
+func TestAWhitespaceOnlyPlanChangeIsNotAChange(t *testing.T) {
+	review := Review{
+		Approved:  false,
+		Plan:      "# Launch\n\n  Ship on Thursday after\n  the migration.\n",
+		Submitted: "# Launch\nShip on Thursday   \nafter the migration.\n",
+	}
+	if review.Changed() {
+		t.Errorf("Changed() = true, want false for a whitespace-only change")
+	}
+	got := answerFor(review)
+	if !strings.Contains(got.Message, "without changing it or saying why") {
+		t.Errorf("message = %q, want the plan treated as unchanged", got.Message)
+	}
+	if strings.Contains(got.Message, "What the reviewer changed") {
+		t.Errorf("message = %q, want no change section for whitespace", got.Message)
+	}
+
+	review.Comparison = textdiff.Comparison{WhitespaceCounts: true}
+	if !review.Changed() {
+		t.Errorf("Changed() = false with WhitespaceCounts, want the whitespace counted")
 	}
 }
 

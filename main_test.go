@@ -12,6 +12,7 @@ import (
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/draft"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/editwindow"
 	"github.com/kylesnowschwartz/agent-to-nvim/internal/pending"
+	"github.com/kylesnowschwartz/agent-to-nvim/internal/textdiff"
 )
 
 func TestAnnounceKeepsNotesOffTheDraft(t *testing.T) {
@@ -25,7 +26,7 @@ func TestAnnounceKeepsNotesOffTheDraft(t *testing.T) {
 	}
 
 	var out strings.Builder
-	if code := announce(&out, back, true); code != exitEdited {
+	if code := announce(&out, back, settings{diff: true}); code != exitEdited {
 		t.Errorf("announce() = %d, want %d", code, exitEdited)
 	}
 	if !strings.Contains(out.String(), ">> check that with ops") {
@@ -43,7 +44,7 @@ func TestAnnouncePlacesANoteAgainstTheDraft(t *testing.T) {
 	)
 
 	var out strings.Builder
-	announce(&out, back, true)
+	announce(&out, back, settings{diff: true})
 
 	want := "notes:\n   3  Launch is Thursday.\n>> check that with ops\n   4  Read the runbook.\n"
 	if !strings.Contains(out.String(), want) {
@@ -62,7 +63,7 @@ func TestAnnounceReportsAWholeDraftNoteWithoutLines(t *testing.T) {
 	)
 
 	var out strings.Builder
-	announce(&out, back, true)
+	announce(&out, back, settings{diff: true})
 
 	report := out.String()[strings.Index(out.String(), "notes:"):]
 	if report != "notes:\n>>> this reads too formally throughout\n" {
@@ -80,7 +81,7 @@ func TestAnnounceMarksEveryLineOfAJoinedNote(t *testing.T) {
 	)
 
 	var out strings.Builder
-	announce(&out, back, true)
+	announce(&out, back, settings{diff: true})
 
 	want := ">> check that with ops\n>> they asked twice\n"
 	if !strings.Contains(out.String(), want) {
@@ -97,7 +98,7 @@ func TestAnnounceCountsTheNotesWithTheOutcome(t *testing.T) {
 	)
 
 	var out strings.Builder
-	announce(&out, back, true)
+	announce(&out, back, settings{diff: true})
 
 	if !strings.Contains(out.String(), "draft text unchanged, 2 notes\n") {
 		t.Errorf("stderr = %q, want the note count on the outcome line", out.String())
@@ -114,7 +115,7 @@ func TestAnnounceCountsANoteOnlyEditAsEdited(t *testing.T) {
 	back := readBack("Launch is Thursday.\n", "Launch is Thursday.\n>> make it shorter\n")
 
 	var out strings.Builder
-	code := announce(&out, back, true)
+	code := announce(&out, back, settings{diff: true})
 
 	if code != exitEdited {
 		t.Errorf("announce() = %d, want %d for a draft carrying a note", code, exitEdited)
@@ -128,7 +129,7 @@ func TestAnnounceReportsAnUntouchedDraftAsUnchanged(t *testing.T) {
 	back := readBack("Launch is Thursday.\n", "Launch is Thursday.\n")
 
 	var out strings.Builder
-	if code := announce(&out, back, true); code != exitUnchanged {
+	if code := announce(&out, back, settings{diff: true}); code != exitUnchanged {
 		t.Errorf("announce() = %d, want %d", code, exitUnchanged)
 	}
 	if !strings.Contains(out.String(), "saved unchanged") {
@@ -139,13 +140,78 @@ func TestAnnounceReportsAnUntouchedDraftAsUnchanged(t *testing.T) {
 	}
 }
 
+// An editor formatter re-wrapping and re-indenting on save is not an edit, so the
+// draft comes back unchanged — and says why the bytes differ.
+func TestAnnounceReportsAWhitespaceOnlyChangeAsUnchanged(t *testing.T) {
+	back := readBack(
+		"Launch is on Thursday after\nthe migration.   \n",
+		"  Launch is on Thursday after the migration.\n\n",
+	)
+
+	var out strings.Builder
+	if code := announce(&out, back, settings{diff: true}); code != exitUnchanged {
+		t.Errorf("announce() = %d, want %d", code, exitUnchanged)
+	}
+	if !strings.Contains(out.String(), "unchanged apart from whitespace") {
+		t.Errorf("stderr = %q, want it to say only whitespace changed", out.String())
+	}
+	if strings.Contains(out.String(), "@@") {
+		t.Errorf("stderr = %q, want no change reported", out.String())
+	}
+}
+
+func TestAnnounceCountsWhitespaceWhenAskedTo(t *testing.T) {
+	back := readBack("Launch is Thursday.   \n", "Launch is Thursday.\n")
+	set := settings{diff: true, compare: textdiff.Comparison{WhitespaceCounts: true}}
+
+	var out strings.Builder
+	if code := announce(&out, back, set); code != exitEdited {
+		t.Errorf("announce() = %d, want %d under -ignore-whitespace=false", code, exitEdited)
+	}
+	if !strings.Contains(out.String(), "@@ line 1 @@") {
+		t.Errorf("stderr = %q, want the whitespace change reported", out.String())
+	}
+}
+
+// A file edited in place is not printed, so a report cut short must not claim
+// to be the whole change.
+func TestAnnounceSendsAnInPlaceReaderToTheFileWhenTheReportIsCut(t *testing.T) {
+	back := readBack(strings.Repeat("old line\n", 500), strings.Repeat("new text\n", 500))
+	back.textAt = "/home/someone/notes/brief.md"
+
+	var out strings.Builder
+	announce(&out, back, settings{diff: true})
+	if !strings.Contains(out.String(), "read the file for the rest") {
+		t.Errorf("stderr = %q, want it to point at the file", out.String()[:300])
+	}
+	if strings.Contains(out.String(), "the whole change") || strings.Contains(out.String(), "stdout") {
+		t.Errorf("stderr = %q, must not call a cut report whole or point at stdout", out.String()[:300])
+	}
+}
+
+// With the report turned off there is nothing below to call the whole change, so
+// an in-place reader is sent to the file.
+func TestAnnounceSendsAnInPlaceReaderToTheFileWithoutAReport(t *testing.T) {
+	back := readBack("Launch is Wednesday.\n", "Launch is Thursday.\n")
+	back.textAt = "/home/someone/notes/brief.md"
+
+	var out strings.Builder
+	announce(&out, back, settings{diff: false})
+	if !strings.Contains(out.String(), "read the file for the edit") {
+		t.Errorf("stderr = %q, want it to point at the file", out.String())
+	}
+	if strings.Contains(out.String(), "the whole change") {
+		t.Errorf("stderr = %q, must not promise a report that is not printed", out.String())
+	}
+}
+
 // A file edited in place is still on disk, so it must not be reported as removed.
 func TestAnnounceDoesNotReportAnInPlaceFileAsRemoved(t *testing.T) {
 	back := readBack("Launch is Thursday.\n", "Launch is Thursday.\n")
 	back.textAt = "/home/someone/notes/brief.md"
 
 	var out strings.Builder
-	announce(&out, back, true)
+	announce(&out, back, settings{diff: true})
 	if strings.Contains(out.String(), "removed") {
 		t.Errorf("stderr = %q, must not call an in-place file removed", out.String())
 	}
@@ -160,7 +226,7 @@ func TestAnnounceReportsChangesToTheDraftOnly(t *testing.T) {
 	)
 
 	var out strings.Builder
-	announce(&out, back, true)
+	announce(&out, back, settings{diff: true})
 
 	if strings.Contains(out.String(), "+ >>") {
 		t.Errorf("stderr = %q, want the note out of the change report", out.String())
@@ -176,7 +242,7 @@ func TestAnnounceIgnoresANoteThatWasAlreadyThere(t *testing.T) {
 	back := readBack(">> left over\nLaunch is Thursday.\n", ">> left over\nLaunch is Thursday.\n")
 
 	var out strings.Builder
-	if code := announce(&out, back, true); code != exitEdited {
+	if code := announce(&out, back, settings{diff: true}); code != exitEdited {
 		t.Errorf("announce() = %d, want %d — the note still needs acting on", code, exitEdited)
 	}
 	if strings.Contains(out.String(), "@@") {
@@ -188,7 +254,7 @@ func TestAnnounceSuppressesTheReportButNotTheNotes(t *testing.T) {
 	back := readBack("Launch is Wednesday.\n", "Launch is Thursday.\n>> check with ops\n")
 
 	var out strings.Builder
-	announce(&out, back, false)
+	announce(&out, back, settings{})
 
 	if strings.Contains(out.String(), "@@") {
 		t.Errorf("stderr = %q, want no change report under -diff=false", out.String())
@@ -203,7 +269,7 @@ func TestAnnounceSaysWhereAnUnprintedEditLives(t *testing.T) {
 	back.textAt = "/Users/someone/project/README.md"
 
 	var out strings.Builder
-	announce(&out, back, true)
+	announce(&out, back, settings{diff: true})
 
 	if !strings.Contains(out.String(), "saved in /Users/someone/project/README.md") {
 		t.Errorf("report does not say where the text lives:\n%s", out.String())

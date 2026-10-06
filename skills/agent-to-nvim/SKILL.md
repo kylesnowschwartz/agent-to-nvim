@@ -84,7 +84,7 @@ The exit code is the whole result. Read it before anything else.
 | Exit | Meaning | What to do |
 | --- | --- | --- |
 | 0 | Saved with changes, or notes left | Scratch draft: use the printed text. In-place file: the file holds the text; use the diff and notes, don't re-read it. Act on any `>>` lines first - instructions get done, questions get discussed. |
-| 10 | Saved unchanged | The draft was approved as-is. Continue with it. |
+| 10 | Saved unchanged | The draft was approved as-is. Continue with it. A save that changed only whitespace (an editor formatter re-wrapping or re-indenting) counts as unchanged. |
 | 20 | Discarded | **Stop.** Don't send, commit, or post anything. Don't re-run. The file is left on disk in case they want it back. |
 | 30 | Deadline passed, still being edited | Tell the user nothing was lost and wait for them to say they're done. See below. |
 | 40 | Sent by the user themselves | Acknowledge in one line at most. Don't send, post, re-run, re-read, or ask what they want. The draft is finished; a scratch draft is removed. |
@@ -235,6 +235,10 @@ who just made the edit by hand helps nobody.
 
 Pass `-diff=false` to suppress the report, which is only worth doing when the draft
 is large and the change doesn't matter to what happens next.
+
+The report compares words, so indentation, blank lines, and line wrapping never
+show up in it. Pass `-ignore-whitespace=false` only when whitespace is the point
+of the draft, such as code or a table whose alignment matters.
 
 ## Requirements
 

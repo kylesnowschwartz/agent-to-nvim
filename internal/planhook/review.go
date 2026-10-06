@@ -28,10 +28,13 @@ type Review struct {
 	// finish without stopping to have each step confirmed. It only means
 	// anything alongside an approval.
 	Auto bool
+	// Comparison decides what counts as rewriting the plan. Its zero value
+	// ignores whitespace, so a formatter that ran on save is not a rewrite.
+	Comparison textdiff.Comparison
 }
 
 // Changed reports whether the human rewrote any of the plan itself.
-func (r Review) Changed() bool { return r.Plan != r.Submitted }
+func (r Review) Changed() bool { return !r.Comparison.Same(r.Submitted, r.Plan) }
 
 // Answer turns the review into the decision Claude Code reads. submitted is the
 // tool input the request arrived with, which an approval has to hand back.
@@ -93,7 +96,7 @@ func (r Review) brief() string {
 		out.WriteString(numbered(r.Notes))
 	}
 
-	if change := textdiff.Unified(r.Submitted, r.Plan); change != "" {
+	if change := r.Comparison.Report(r.Submitted, r.Plan); change != "" {
 		out.WriteString("\n## What the reviewer changed in the plan\n\n")
 		out.WriteString(change)
 		out.WriteString("\nThe marked words are the edit: [-removed-] and {+added+}. These changes are\n" +
